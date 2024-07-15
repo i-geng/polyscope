@@ -28,8 +28,6 @@ class Group;
 class SlicePlane;
 class Widget;
 class FloatingQuantityStructure;
-class Light;
-
 namespace view {
 extern const double defaultNearClipRatio;
 extern const double defaultFarClipRatio;
@@ -64,12 +62,12 @@ struct Context {
   std::vector<WeakHandle<Widget>> widgets;
   bool doDefaultMouseInteraction = true;
   std::function<void()> userCallback = nullptr;
-  std::map<std::string, std::map<std::string, std::unique_ptr<Light>>> lights;
 
 
   // ======================================================
   // === Render engine globals from engine.h
   // ======================================================
+
 
   // ======================================================
   // === View globals from view.h

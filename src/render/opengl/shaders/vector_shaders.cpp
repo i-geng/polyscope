@@ -28,6 +28,7 @@ const ShaderStageSpecification FLEX_VECTOR_VERT_SHADER = {
 
     // source
 R"(
+        ${ GLSL_VERSION }$
 
         in vec3 a_position;
         in vec3 a_vector;
@@ -69,6 +70,7 @@ const ShaderStageSpecification FLEX_TANGENT_VECTOR_VERT_SHADER = {
 
     // source
 R"(
+        ${ GLSL_VERSION }$
 
         in vec3 a_position;
         in vec2 a_tangentVector;
@@ -120,6 +122,7 @@ const ShaderStageSpecification FLEX_VECTOR_GEOM_SHADER = {
 
     // source
 R"(
+        ${ GLSL_VERSION }$
         
         layout(points) in;
         layout(triangle_strip, max_vertices=14) out;
@@ -204,6 +207,7 @@ const ShaderStageSpecification FLEX_VECTOR_FRAG_SHADER = {
  
     // source
 R"(
+        ${ GLSL_VERSION }$
         uniform mat4 u_projMatrix; 
         uniform mat4 u_invProjMatrix;
         uniform vec4 u_viewport;

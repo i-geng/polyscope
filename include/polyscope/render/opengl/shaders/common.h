@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include <string>
-
 // This file defines common routines used by
 // multiple shaders; it is combined at link time with all fragment
 // shaders compiled via the methods in the GLProgram class.
@@ -11,8 +9,6 @@
 namespace polyscope {
 namespace render {
 namespace backend_openGL3 {
-
-extern std::string shaderCommonDefs;
 
 extern const char* shaderCommonSource;
 
