@@ -14,7 +14,6 @@ extern const ShaderReplacementRule GLSL_VERSION;
 extern const ShaderReplacementRule GLOBAL_FRAGMENT_FILTER;
 extern const ShaderReplacementRule LIGHT_MATCAP;
 extern const ShaderReplacementRule LIGHT_PASSTHRU;
-extern const ShaderReplacementRule LIGHT_PASSTHRU_TETRA;
 
 
 // Shading color generation policies (colormapping, etc)
@@ -32,9 +31,6 @@ extern const ShaderReplacementRule ISOLINE_STRIPE_VALUECOLOR;   // modulate albe
 extern const ShaderReplacementRule CHECKER_VALUE2COLOR;         // modulate albedoColor based on shadeValue2
 extern const ShaderReplacementRule SHADE_BASECOLOR;             // constant from u_baseColor
 extern const ShaderReplacementRule PREMULTIPLY_COLOR;
-
-extern const ShaderReplacementRule SHADE_TETRACOLOR;
-extern const ShaderReplacementRule COMPUTE_PHONG_SHADING;
 
 // Positions, culling, etc
 extern const ShaderReplacementRule GENERATE_VIEW_POS;          // computes viewPos, position in viewspace for fragment

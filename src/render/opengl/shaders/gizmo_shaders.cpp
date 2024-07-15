@@ -31,6 +31,7 @@ const ShaderStageSpecification TRANSFORMATION_GIZMO_ROT_VERT = {
 
     // source
 R"(
+        ${ GLSL_VERSION }$
 
         uniform mat4 u_modelView;
         uniform mat4 u_projMatrix;
@@ -73,6 +74,7 @@ const ShaderStageSpecification TRANSFORMATION_GIZMO_ROT_FRAG = {
  
     // source
 R"(
+        ${ GLSL_VERSION }$
         in vec3 a_normalToFrag;
         in vec3 a_colorToFrag;
         in vec3 a_componentToFrag;
@@ -180,6 +182,7 @@ const ShaderStageSpecification SLICE_PLANE_VERT_SHADER =  {
 
     // source
 R"(
+      ${ GLSL_VERSION }$
 
       uniform mat4 u_viewMatrix;
       uniform mat4 u_projMatrix;
@@ -218,6 +221,7 @@ const ShaderStageSpecification SLICE_PLANE_FRAG_SHADER= {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       uniform mat4 u_objectMatrix;
       uniform mat4 u_viewMatrix;

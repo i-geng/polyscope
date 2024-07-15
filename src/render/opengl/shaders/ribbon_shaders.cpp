@@ -26,6 +26,7 @@ const ShaderStageSpecification RIBBON_VERT_SHADER = {
 
     // source
 R"(
+       ${ GLSL_VERSION }$
 
         in vec3 a_position;
         in vec3 a_color;
@@ -62,6 +63,7 @@ const ShaderStageSpecification RIBBON_GEOM_SHADER = {
 
     // source
 R"(
+        ${ GLSL_VERSION }$
 
         layout(lines_adjacency) in;
         layout(triangle_strip, max_vertices=20) out;
@@ -160,6 +162,7 @@ const ShaderStageSpecification RIBBON_FRAG_SHADER = {
  
     // source
 R"(
+        ${ GLSL_VERSION }$
 
         in vec3 colorToFrag;
         in vec3 cameraNormalToFrag;

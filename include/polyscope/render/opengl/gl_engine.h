@@ -6,7 +6,6 @@
 #include "polyscope/render/engine.h"
 #include "polyscope/utilities.h"
 
-#include <map>
 #include <unordered_map>
 
 // Note: DO NOT include this header throughout polyscope, and do not directly make openGL calls. This header should only
@@ -37,7 +36,6 @@ typedef GLuint ShaderHandle;
 typedef GLuint ProgramHandle;
 typedef GLuint AttributeHandle;
 typedef GLuint VertexBufferHandle;
-typedef GLuint UBOHandle;
 
 typedef GLint UniformLocation;
 typedef GLint AttributeLocation;
@@ -305,7 +303,6 @@ public:
   void setUniform(std::string name, glm::uvec2 val) override;
   void setUniform(std::string name, glm::uvec3 val) override;
   void setUniform(std::string name, glm::uvec4 val) override;
-  void setLightUniform(std::string name) override;
 
   // = Attributes
   // clang-format off
@@ -366,42 +363,6 @@ private:
   std::shared_ptr<GLCompiledProgram> compiledProgram;
   AttributeHandle vaoHandle;
 };
-
-// Used to pass data to UBO for shaders
-struct PointLightData {
-  glm::vec4 position;
-  glm::vec4 color_and_enabled;
-
-  PointLightData()
-    : position(glm::vec4{0.0, 0.0, 0.0, 0.0}),
-      color_and_enabled(glm::vec4{1.0, 1.0, 1.0, 1.0}) {}
-
-  PointLightData(glm::vec4 pos, glm::vec4 col_and_enabled)
-    : position(pos), color_and_enabled(col_and_enabled) {}
-
-}; // struct PointLightData
-
-class GLLightManager : public LightManager {
-public:
-  GLLightManager();
-  virtual ~GLLightManager();
-
-  bool registerLight(std::string name, glm::vec3 position, glm::vec3 color) override;
-  void removeLight(std::string name) override;
-  void setLightPosition(std::string name, glm::vec3 newPos) override;
-  void setLightColor(std::string name, glm::vec3 newCol) override;
-  void setEnabled(std::string name, bool newVal) override;
-
-  void bindUBO();
-
-protected:
-  void updatePointLightUBO();
-
-private:
-  UBOHandle pointLightUBO;
-  std::map<std::string, PointLightData> pointLightDataMap;
-  
-}; // GLLightManager
 
 
 class GLEngine : public Engine {
@@ -465,8 +426,6 @@ public:
 
   virtual void setFrontFaceCCW(bool newVal) override;
 
-  void createLightManager();
-
 protected:
   // Helpers
   virtual void createSlicePlaneFliterRule(std::string name) override;
@@ -482,7 +441,6 @@ protected:
   std::shared_ptr<GLCompiledProgram> getCompiledProgram(const std::string& programName,
                                                         const std::vector<std::string>& customRules,
                                                         ShaderReplacementDefaults defaults);
-
 };
 
 } // namespace backend_openGL3

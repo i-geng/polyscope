@@ -29,6 +29,7 @@ const ShaderStageSpecification SLICE_TETS_VERT_SHADER = {
 
     // source
     R"(
+        ${ GLSL_VERSION }$
         ${ VERT_DECLARATIONS }$
 
         in vec3 a_point_1;
@@ -82,6 +83,7 @@ const ShaderStageSpecification SLICE_TETS_GEOM_SHADER = {
 
     // source
     R"(
+        ${ GLSL_VERSION }$
 
         layout(points) in;
         layout(triangle_strip, max_vertices=4) out;
@@ -187,6 +189,7 @@ const ShaderStageSpecification SLICE_TETS_FRAG_SHADER = {
 
     // source
     R"(
+        ${ GLSL_VERSION }$
         in vec3 a_normalToFrag;
         in vec3 a_barycoordToFrag;
         layout(location = 0) out vec4 outputF;

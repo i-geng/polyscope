@@ -30,6 +30,7 @@ const ShaderStageSpecification GROUND_PLANE_VERT_SHADER =  {
 
     // source
 R"(
+      ${ GLSL_VERSION }$
 
       uniform mat4 u_viewMatrix;
       uniform mat4 u_projMatrix;
@@ -74,6 +75,7 @@ const ShaderStageSpecification GROUND_PLANE_TILE_FRAG_SHADER= {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       uniform sampler2D t_ground;
       uniform mat4 u_viewMatrix;
@@ -170,6 +172,7 @@ const ShaderStageSpecification GROUND_PLANE_TILE_REFLECT_FRAG_SHADER = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       uniform sampler2D t_ground;
       uniform sampler2D t_mirrorImage;
@@ -275,6 +278,7 @@ const ShaderStageSpecification GROUND_PLANE_SHADOW_FRAG_SHADER = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       uniform sampler2D t_shadow;
       uniform mat4 u_viewMatrix;

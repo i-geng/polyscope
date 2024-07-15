@@ -29,6 +29,7 @@ const ShaderStageSpecification  TEXTURE_DRAW_VERT_SHADER =  {
     
     // source
 R"(
+      ${ GLSL_VERSION }$
       in vec3 a_position;
       out vec2 tCoord;
       
@@ -68,6 +69,7 @@ const ShaderStageSpecification  SPHEREBG_DRAW_VERT_SHADER =  {
     
     // source
 R"(
+      ${ GLSL_VERSION }$
 
       uniform mat4 u_viewMatrix;
       uniform mat4 u_projMatrix;
@@ -102,6 +104,7 @@ const ShaderStageSpecification PLAIN_TEXTURE_DRAW_FRAG_SHADER = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_image;
@@ -144,6 +147,7 @@ const ShaderStageSpecification PLAIN_RENDERIMAGE_TEXTURE_DRAW_FRAG_SHADER = {
     // source 
 R"(
 
+  ${ GLSL_VERSION }$
   uniform mat4 u_projMatrix; 
   uniform mat4 u_invProjMatrix;
   uniform vec4 u_viewport;
@@ -225,6 +229,7 @@ const ShaderStageSpecification PLAIN_RAW_RENDERIMAGE_TEXTURE_DRAW_FRAG_SHADER = 
     // source 
 R"(
 
+  ${ GLSL_VERSION }$
   uniform mat4 u_projMatrix; 
   uniform mat4 u_invProjMatrix;
   uniform vec4 u_viewport;
@@ -300,6 +305,7 @@ const ShaderStageSpecification DOT3_TEXTURE_DRAW_FRAG_SHADER = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_image;
@@ -333,6 +339,7 @@ const ShaderStageSpecification MAP3_TEXTURE_DRAW_FRAG_SHADER = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_image;
@@ -365,6 +372,7 @@ const ShaderStageSpecification SPHEREBG_DRAW_FRAG_SHADER = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec3 viewDir;
       uniform sampler2D t_image;
@@ -400,6 +408,7 @@ const ShaderStageSpecification COMPOSITE_PEEL = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_image;
@@ -429,6 +438,7 @@ const ShaderStageSpecification DEPTH_COPY = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_depth;
@@ -460,6 +470,7 @@ const ShaderStageSpecification DEPTH_TO_MASK = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_depth;
@@ -495,6 +506,7 @@ const ShaderStageSpecification SCALAR_TEXTURE_COLORMAP = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_scalar;
@@ -539,6 +551,7 @@ const ShaderStageSpecification BLUR_RGB = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in vec2 tCoord;
       uniform sampler2D t_image;

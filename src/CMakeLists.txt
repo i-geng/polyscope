@@ -193,7 +193,6 @@ SET(SRCS
   # Point cloud
   point_cloud.cpp
   point_cloud_color_quantity.cpp
-  point_cloud_tetracolor_quantity.cpp
   point_cloud_scalar_quantity.cpp
   point_cloud_vector_quantity.cpp
   point_cloud_parameterization_quantity.cpp
@@ -201,7 +200,6 @@ SET(SRCS
   # Surface
   surface_mesh.cpp
   surface_color_quantity.cpp
-  surface_tetracolor_quantity.cpp
   surface_scalar_quantity.cpp
   surface_vector_quantity.cpp
   surface_parameterization_quantity.cpp
@@ -244,10 +242,6 @@ SET(SRCS
   # Rendering utilities
   imgui_config.cpp
   fullscreen_artist.cpp
-
-  # Lighting
-  light.cpp
-  point_light.cpp
 
   ## Embedded binary data
   render/bindata/bindata_font_lato_regular.cpp
@@ -298,8 +292,6 @@ SET(HEADERS
   ${INCLUDE_ROOT}/imgui_config.h
   ${INCLUDE_ROOT}/implicit_helpers.h
   ${INCLUDE_ROOT}/implicit_helpers.ipp
-  ${INCLUDE_ROOT}/light.h
-  ${INCLUDE_ROOT}/light.ipp
   ${INCLUDE_ROOT}/messages.h
   ${INCLUDE_ROOT}/options.h
   ${INCLUDE_ROOT}/parameterization_quantity.h
@@ -310,13 +302,10 @@ SET(HEADERS
   ${INCLUDE_ROOT}/point_cloud.h
   ${INCLUDE_ROOT}/point_cloud.ipp
   ${INCLUDE_ROOT}/point_cloud_color_quantity.h
-  ${INCLUDE_ROOT}/point_cloud_tetracolor_quantity.h
   ${INCLUDE_ROOT}/point_cloud_quantity.h
   ${INCLUDE_ROOT}/point_cloud_scalar_quantity.h
   ${INCLUDE_ROOT}/point_cloud_parameterization_quantity.h
   ${INCLUDE_ROOT}/point_cloud_vector_quantity.h
-  ${INCLUDE_ROOT}/point_light.h
-  ${INCLUDE_ROOT}/point_light.ipp
   ${INCLUDE_ROOT}/polyscope.h
   ${INCLUDE_ROOT}/quantity.h
   ${INCLUDE_ROOT}/quantity.ipp
@@ -341,15 +330,12 @@ SET(HEADERS
   ${INCLUDE_ROOT}/structure.h
   ${INCLUDE_ROOT}/structure.ipp
   ${INCLUDE_ROOT}/surface_color_quantity.h
-  ${INCLUDE_ROOT}/surface_tetracolor_quantity.h
   ${INCLUDE_ROOT}/surface_mesh.h
   ${INCLUDE_ROOT}/surface_mesh.ipp
   ${INCLUDE_ROOT}/surface_mesh_quantity.h
   ${INCLUDE_ROOT}/surface_parameterization_quantity.h
   ${INCLUDE_ROOT}/surface_scalar_quantity.h
   ${INCLUDE_ROOT}/surface_vector_quantity.h
-  ${INCLUDE_ROOT}/tetracolor_quantity.h
-  ${INCLUDE_ROOT}/tetracolor_quantity.ipp
   ${INCLUDE_ROOT}/types.h
   ${INCLUDE_ROOT}/utilities.h
   ${INCLUDE_ROOT}/view.h

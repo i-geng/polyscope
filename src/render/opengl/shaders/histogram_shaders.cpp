@@ -24,6 +24,7 @@ const ShaderStageSpecification HISTOGRAM_VERT_SHADER =  {
 
     // source
 R"(
+      ${ GLSL_VERSION }$
       in vec2 a_coord;
       
       out float t;
@@ -58,6 +59,7 @@ const ShaderStageSpecification HISTOGRAM_FRAG_SHADER = {
     
     // source 
 R"(
+      ${ GLSL_VERSION }$
 
       in float t;
 
