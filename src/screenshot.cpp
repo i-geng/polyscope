@@ -37,6 +37,28 @@ bool hasExtension(std::string str, std::string ext) {
   }
 }
 
+/* Book-keeping functionality shared across multiple functions before reading
+ * a framebuffer.
+ */
+void prepReadBuffer(bool transparentBG) {
+  render::engine->useAltDisplayBuffer = true;
+  if (transparentBG) render::engine->lightCopy = true; // copy directly in to buffer without blending
+
+  // == Make sure we render first
+  processLazyProperties();
+
+  // save the redraw requested bit and restore it below
+  bool requestedAlready = redrawRequested();
+  requestRedraw();
+
+  draw(false, false);
+
+  if (requestedAlready) {
+    requestRedraw();
+  }
+  return;
+}
+
 } // namespace
 
 /* Opens a FILE pipe to FFmpeg so that we can write to .mp4 video file.
@@ -121,21 +143,7 @@ void writeVideoFrame(FILE* fd, bool transparentBG) {
     return;
   }
 
-  render::engine->useAltDisplayBuffer = true;
-  if (transparentBG) render::engine->lightCopy = true; // copy directly in to buffer without blending
-
-  // Make sure we render first
-  processLazyProperties();
-
-  // Save the redraw requested bit and restore it below
-  bool requestedAlready = redrawRequested();
-  requestRedraw();
-
-  draw(false, false);
-
-  if (requestedAlready) {
-    requestRedraw();
-  }
+  prepReadBuffer(transparentBG);
 
   // These _should_ always be accurate
   int w = view::bufferWidth;
@@ -158,22 +166,7 @@ void writeVideoFrame(FILE* fd, bool transparentBG) {
 
 
 void screenshot(std::string filename, bool transparentBG) {
-
-  render::engine->useAltDisplayBuffer = true;
-  if (transparentBG) render::engine->lightCopy = true; // copy directly in to buffer without blending
-
-  // == Make sure we render first
-  processLazyProperties();
-
-  // save the redraw requested bit and restore it below
-  bool requestedAlready = redrawRequested();
-  requestRedraw();
-
-  draw(false, false);
-
-  if (requestedAlready) {
-    requestRedraw();
-  }
+  prepReadBuffer(transparentBG);
 
   // these _should_ always be accurate
   int w = view::bufferWidth;
@@ -216,22 +209,7 @@ void screenshot(bool transparentBG) {
 void resetScreenshotIndex() { state::screenshotInd = 0; }
 
 std::vector<unsigned char> screenshotToBuffer(bool transparentBG) {
-
-  render::engine->useAltDisplayBuffer = true;
-  if (transparentBG) render::engine->lightCopy = true; // copy directly in to buffer without blending
-
-  // == Make sure we render first
-  processLazyProperties();
-
-  // save the redraw requested bit and restore it below
-  bool requestedAlready = redrawRequested();
-  requestRedraw();
-
-  draw(false, false);
-
-  if (requestedAlready) {
-    requestRedraw();
-  }
+  prepReadBuffer(transparentBG);
 
   // these _should_ always be accurate
   int w = view::bufferWidth;
@@ -254,21 +232,45 @@ std::vector<unsigned char> screenshotToBuffer(bool transparentBG) {
   return buff;
 }
 
+void saveImageLMS_Q(std::string filename, const std::vector<unsigned char>& buff, 
+                    int w, int h) {
 
-void rasterizeTetra(std::string filename) {
-  render::engine->useAltDisplayBuffer = true;
-  render::engine->lightCopy = true;
-
-  processLazyProperties();
-
-  bool requestedAlready = redrawRequested();
-  requestRedraw();
-
-  draw(false, false);
-
-  if (requestedAlready) {
-  requestRedraw();
+  std::vector<unsigned char> lms_buff(3 * w * h); 
+  std::vector<unsigned char> q_buff(w * h);
+  
+  for (int j = 0; j < h; j++) {
+    for (int i = 0; i < w; i++) {
+      int index = i + j * w;
+      lms_buff[3 * index + 0] = buff[4 * index + 0];
+      lms_buff[3 * index + 1] = buff[4 * index + 1];
+      lms_buff[3 * index + 2] = buff[4 * index + 2];
+      q_buff[index] = buff[4 * index + 3];
+    }
   }
+
+  saveImage("LMS_" + filename, &(lms_buff.front()), w, h, 3);
+  saveImage("Q_" + filename, &(q_buff.front()), w, h, 1);
+}
+
+void saveImageFourGray(std::string filename, const std::vector<unsigned char>& buff, 
+                       int w, int h) {
+
+  for (int ch = 0; ch < 4; ch++) {
+    std::vector<unsigned char> ch_buff(w * h);
+
+    for (int j = 0; j < h; j++) {
+      for (int i = 0; i < w; i++) {
+        int index = i + j * w;
+        ch_buff[index] = buff[4 * index + ch];
+      }
+    }
+
+    saveImage(std::to_string(ch) + "_" + filename, &(ch_buff.front()), w, h, 1);
+  }
+}
+
+void rasterizeTetra(std::string filename, SaveImageMode mode) { 
+  prepReadBuffer(true);
 
   // We will grab sceneBufferFinal, which contains scene colors before tone mapping.
   int w = view::bufferWidth;
@@ -276,7 +278,17 @@ void rasterizeTetra(std::string filename) {
   std::vector<unsigned char> buff = render::engine->sceneBufferFinal->readBuffer();
 
   // Save to file
-  saveImage(filename, &(buff.front()), w, h, 4);
+  switch (mode) {
+    case SaveImageMode::RG1G2B:
+      saveImage(filename, &(buff.front()), w, h, 4);
+      break;
+    case SaveImageMode::LMS_Q:
+      saveImageLMS_Q(filename, buff, w, h);
+    case SaveImageMode::FourGray:
+      saveImageFourGray(filename, buff, w, h);
+    default:
+      break;
+  }
 
   render::engine->useAltDisplayBuffer = false;
   render::engine->lightCopy = false;
@@ -291,5 +303,8 @@ void rasterizeTetra() {
 
   state::rasterizeTetraInd++;
 }
+
+
+
 
 } // namespace polyscope
