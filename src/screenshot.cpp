@@ -232,6 +232,42 @@ std::vector<unsigned char> screenshotToBuffer(bool transparentBG) {
   return buff;
 }
 
+void saveImageLMS_Q(std::string filename, const std::vector<unsigned char>& buff, 
+                    int w, int h) {
+
+  std::vector<unsigned char> lms_buff(3 * w * h); 
+  std::vector<unsigned char> q_buff(w * h);
+  
+  for (int j = 0; j < h; j++) {
+    for (int i = 0; i < w; i++) {
+      int index = i + j * w;
+      lms_buff[3 * index + 0] = buff[4 * index + 0];
+      lms_buff[3 * index + 1] = buff[4 * index + 1];
+      lms_buff[3 * index + 2] = buff[4 * index + 2];
+      q_buff[index] = buff[4 * index + 3];
+    }
+  }
+
+  saveImage("LMS_" + filename, &(lms_buff.front()), w, h, 3);
+  saveImage("Q_" + filename, &(q_buff.front()), w, h, 1);
+}
+
+void saveImageFourGray(std::string filename, const std::vector<unsigned char>& buff, 
+                       int w, int h) {
+
+  for (int ch = 0; ch < 4; ch++) {
+    std::vector<unsigned char> ch_buff(w * h);
+
+    for (int j = 0; j < h; j++) {
+      for (int i = 0; i < w; i++) {
+        int index = i + j * w;
+        ch_buff[index] = buff[4 * index + ch];
+      }
+    }
+
+    saveImage(std::to_string(ch) + "_" + filename, &(ch_buff.front()), w, h, 1);
+  }
+}
 
 void rasterizeTetra(std::string filename, SaveImageMode mode) { 
   prepReadBuffer(true);
@@ -242,24 +278,16 @@ void rasterizeTetra(std::string filename, SaveImageMode mode) {
   std::vector<unsigned char> buff = render::engine->sceneBufferFinal->readBuffer();
 
   // Save to file
-  if (mode == SaveImageMode::RG1G2B) {
-    saveImage(filename, &(buff.front()), w, h, 4);
-  } else if (mode == SaveImageMode::LMS_Q) {
-
-    std::vector<unsigned char> lms_buff(3 * w * h); 
-    std::vector<unsigned char> q_buff(w * h);
-    for (int j = 0; j < h; j++) {
-      for (int i = 0; i < w; i++) {
-        int index = i + j * w;
-        lms_buff[3 * index + 0] = buff[4 * index + 0];
-        lms_buff[3 * index + 1] = buff[4 * index + 1];
-        lms_buff[3 * index + 2] = buff[4 * index + 2];
-        q_buff[index] = buff[4 * index + 3];
-      }
-    }
-
-    saveImage("LMS_" + filename, &(lms_buff.front()), w, h, 3);
-    saveImage("Q_" + filename, &(q_buff.front()), w, h, 1);
+  switch (mode) {
+    case SaveImageMode::RG1G2B:
+      saveImage(filename, &(buff.front()), w, h, 4);
+      break;
+    case SaveImageMode::LMS_Q:
+      saveImageLMS_Q(filename, buff, w, h);
+    case SaveImageMode::FourGray:
+      saveImageFourGray(filename, buff, w, h);
+    default:
+      break;
   }
 
   render::engine->useAltDisplayBuffer = false;

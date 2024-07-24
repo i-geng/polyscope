@@ -24,7 +24,7 @@ enum class VolumeCellType { TET = 0, HEX };
 enum class ImplicitRenderMode { SphereMarch, FixedStep };
 enum class ImageOrigin { LowerLeft, UpperLeft };
 
-enum class SaveImageMode { RG1G2B = 0, LMS_Q };
+enum class SaveImageMode { RG1G2B = 0, LMS_Q, FourGray };
 
 enum class ParamCoordsType { UNIT = 0, WORLD }; // UNIT -> [0,1], WORLD -> length-valued
 enum class ParamVizStyle {
