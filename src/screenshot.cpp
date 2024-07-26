@@ -162,6 +162,9 @@ void writeVideoFrame(FILE* fd, bool transparentBG) {
 
   // Write to the FFmpeg pipe
   fwrite(&(buff.front()), sizeof(unsigned char) * w * h * 4, 1, fd);
+
+  render::engine->useAltDisplayBuffer = false;
+  if (transparentBG) render::engine->lightCopy = false;
 }
 
 
