@@ -34,6 +34,7 @@ list (APPEND BACKEND_SRCS
     render/opengl/shaders/sphere_shaders.cpp
     render/opengl/shaders/ribbon_shaders.cpp
     render/opengl/shaders/cylinder_shaders.cpp
+    render/opengl/shaders/text_object_shaders.cpp
     render/opengl/shaders/rules.cpp
     render/opengl/shaders/common.cpp
 )
@@ -228,6 +229,9 @@ SET(SRCS
   # Simple triangle mesh
   simple_triangle_mesh.cpp
 
+  # Text objects
+  text_object.cpp
+
   # Floating quantities
   floating_quantity_structure.cpp
   floating_quantity.cpp
@@ -350,6 +354,7 @@ SET(HEADERS
   ${INCLUDE_ROOT}/surface_vector_quantity.h
   ${INCLUDE_ROOT}/tetracolor_quantity.h
   ${INCLUDE_ROOT}/tetracolor_quantity.ipp
+  ${INCLUDE_ROOT}/text_object.h
   ${INCLUDE_ROOT}/types.h
   ${INCLUDE_ROOT}/utilities.h
   ${INCLUDE_ROOT}/view.h
