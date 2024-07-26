@@ -41,3 +41,9 @@ endif()
 if(NOT TARGET stb)
   add_subdirectory(stb)
 endif()
+
+## FreeType
+if(NOT TARGET freetype)
+  add_subdirectory(freetype)
+endif()
+
