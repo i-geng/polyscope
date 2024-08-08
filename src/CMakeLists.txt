@@ -371,6 +371,7 @@ SET(HEADERS
   ${INCLUDE_ROOT}/volume_grid_quantity.h
   ${INCLUDE_ROOT}/volume_grid_scalar_quantity.h
   ${INCLUDE_ROOT}/weak_handle.h
+  ${INCLUDE_ROOT}/filesystem.h
 )
 
 # Create a single library for the project

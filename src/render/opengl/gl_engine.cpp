@@ -5,6 +5,7 @@
 #ifdef POLYSCOPE_BACKEND_OPENGL3_ENABLED
 #include "polyscope/render/opengl/gl_engine.h"
 
+#include "polyscope/filesystem.h"
 #include "polyscope/messages.h"
 #include "polyscope/options.h"
 #include "polyscope/polyscope.h"
@@ -27,6 +28,7 @@
 #include "polyscope/render/opengl/shaders/texture_draw_shaders.h"
 #include "polyscope/render/opengl/shaders/vector_shaders.h"
 #include "polyscope/render/opengl/shaders/volume_mesh_shaders.h"
+#include "polyscope/render/opengl/shaders/text_object_shaders.h"
 
 #include "stb_image.h"
 
@@ -2214,6 +2216,103 @@ void GLLightManager::bindUBO() {
 }
 
 // =============================================================
+// ====================  Text Render ===========================
+// =============================================================
+
+GLTextRenderProgram::GLTextRenderProgram(std::shared_ptr<GLCompiledProgram> compiledProgram)
+  : GLShaderProgram(compiledProgram) {
+
+  // Initialize FreeType library
+  FT_Library ft;
+  if (FT_Init_FreeType(&ft)) {
+    std::cout << "ERROR::FREETYPE: Could not init FreeType Library" << std::endl;
+    return;
+  }
+
+  // Load font name
+  // TODO: font_name should be specified by user
+  std::string font_name = FileSystem::getPath("resources/fonts/fluff_plush.ttf");
+  if (font_name.empty()) {
+    std::cout << "ERROR:GLTextRenderProgram: Could not load font" << std::endl;
+    return;
+  }
+
+  // Load font face
+  FT_Face face;
+  if (FT_New_Face(ft, font_name.c_str(), 0, &face)) {
+    std::cout << "ERROR::FREETYPE: Failed to load font face" << std::endl;
+    return;
+  }
+
+  FT_Set_Pixel_Sizes(face, 0, 48); // Set width and height parameters
+
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // Disable byte-alignment restriction
+
+  // Load first 128 characters of ASCII set
+  for (unsigned char c = 0; c < 128; c++) {
+    // Load character glyph
+    if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
+      std::cout << "WARNING::FREETYPE: Failed to load glyph" << std::endl;
+      continue;
+    }
+
+    // Generate texture for this glyph
+    TextureBufferHandle textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(
+      GL_TEXTURE_2D,
+      0,
+      GL_RED,
+      face->glyph->bitmap.width,
+      face->glyph->bitmap.rows,
+      0,
+      GL_RED,
+      GL_UNSIGNED_BYTE,
+      face->glyph->bitmap.buffer
+    );
+
+    // Set texture options
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Store character for later rendering
+    Glyph glyph = {
+      textureID,
+      glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
+      glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
+      static_cast<size_t>(face->glyph->advance.x)
+    };
+
+    glyphs.insert(std::pair<char, Glyph>(c, glyph));
+  }
+  
+  glBindTexture(GL_TEXTURE_2D, 0);
+  
+  // Destroy FreeType after we're finished
+  FT_Done_Face(face);
+}
+
+GLTextRenderProgram::~GLTextRenderProgram() { }
+
+void GLTextRenderProgram::draw() {
+  std::string textContent = "A";
+  float x = 0.0;
+  float y = 0.0;
+  float z = -5.0;
+  float scale = 5.0;
+  glm::vec3 color = glm::vec3(1.0, 0.0, 1.0);
+
+  GLShaderProgram::draw();
+
+  return;
+}
+
+
+
+// =============================================================
 // =====================  Engine ===============================
 // =============================================================
 
@@ -2579,6 +2678,7 @@ void GLEngine::populateDefaultShadersAndRules() {
   registerShaderProgram("MAP_LIGHT", {TEXTURE_DRAW_VERT_SHADER, MAP_LIGHT_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("RIBBON", {RIBBON_VERT_SHADER, RIBBON_GEOM_SHADER, RIBBON_FRAG_SHADER}, DrawMode::IndexedLineStripAdjacency);
   registerShaderProgram("SLICE_PLANE", {SLICE_PLANE_VERT_SHADER, SLICE_PLANE_FRAG_SHADER}, DrawMode::Triangles);
+  registerShaderProgram("TEXT_OBJECT", {TEXT_OBJECT_VERT_SHADER, TEXT_OBJECT_FRAG_SHADER}, DrawMode::Triangles);
 
   registerShaderProgram("TEXTURE_DRAW_PLAIN", {TEXTURE_DRAW_VERT_SHADER, PLAIN_TEXTURE_DRAW_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("TEXTURE_DRAW_DOT3", {TEXTURE_DRAW_VERT_SHADER, DOT3_TEXTURE_DRAW_FRAG_SHADER}, DrawMode::Triangles);
@@ -2705,6 +2805,15 @@ void GLEngine::populateDefaultShadersAndRules() {
 
   // clang-format on
 };
+
+
+std::shared_ptr<ShaderProgram> GLEngine::requestTextRenderer(const std::string& programName, 
+                                                       const std::vector<std::string>& customRules,
+                                                      ShaderReplacementDefaults defaults) { 
+  GLTextRenderProgram* t = new GLTextRenderProgram(getCompiledProgram(programName, customRules, defaults));
+  
+  return std::shared_ptr<ShaderProgram>(t);  
+}
 
 void GLEngine::createSlicePlaneFliterRule(std::string uniquePostfix) {
   registeredShaderRules.insert({"SLICE_PLANE_CULL_" + uniquePostfix, generateSlicePlaneRule(uniquePostfix)});

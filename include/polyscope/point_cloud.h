@@ -140,8 +140,7 @@ public:
   std::string getMaterial();
 
   // Rendering helpers used by quantities
-  void setPointCloudUniforms(render::ShaderProgram& p);
-  void setPointProgramGeometryAttributes(render::ShaderProgram& p);
+  void setPointCloudUniforms(render::ShaderProgram& p); void setPointProgramGeometryAttributes(render::ShaderProgram& p);
   std::vector<std::string> addPointCloudRules(std::vector<std::string> initRules, bool withPointCloud = true);
   std::string getShaderNameForRenderMode();
 

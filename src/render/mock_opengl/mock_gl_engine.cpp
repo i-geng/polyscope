@@ -2042,6 +2042,10 @@ void MockGLEngine::createSlicePlaneFliterRule(std::string uniquePostfix) {
       {"SLICE_PLANE_VOLUMEGRID_CULL_" + uniquePostfix, generateVolumeGridSlicePlaneRule(uniquePostfix)});
 }
 
+std::shared_ptr<ShaderProgram> MockGLEngine::requestTextRenderer(const std::string& programName, 
+                                                       const std::vector<std::string>& customRules,
+                                                      ShaderReplacementDefaults defaults) { }
+
 } // namespace backend_openGL_mock
 } // namespace render
 } // namespace polyscope

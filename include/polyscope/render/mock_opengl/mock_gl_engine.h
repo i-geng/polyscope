@@ -392,6 +392,10 @@ public:
   requestShader(const std::string& programName, const std::vector<std::string>& customRules,
                 ShaderReplacementDefaults defaults = ShaderReplacementDefaults::SceneObject) override;
 
+  std::shared_ptr<ShaderProgram> 
+  requestTextRenderer(const std::string& programName, const std::vector<std::string>& customRules,
+                ShaderReplacementDefaults defaults = ShaderReplacementDefaults::SceneObject) override;
+
   // === Implementation details
 
   // Add a shader programs/rules so that they can be requested above

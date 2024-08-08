@@ -15,5 +15,8 @@ set(POLYSCOPE_BACKEND_OPENGL3_EGL "AUTO" CACHE STRING "Enable openGL3_egl backen
 ### Do anything needed for dependencies and bring their stuff in to scope
 add_subdirectory(deps)
 
+configure_file(configuration/root_directory.h.in configuration/root_directory.h)
+include_directories(${CMAKE_BINARY_DIR}/lib/configuration)
+
 ### Add things for this project
 add_subdirectory(src)

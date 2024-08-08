@@ -271,10 +271,8 @@ ShaderProgram::ShaderProgram(DrawMode dm) : drawMode(dm), uniqueID(render::engin
 }
 
 
-LightManager::LightManager() {
-} 
-
-LightManager::~LightManager() {}
+LightManager::LightManager() { } 
+LightManager::~LightManager() { }
 
 Engine::Engine() {}
 Engine::~Engine() {}

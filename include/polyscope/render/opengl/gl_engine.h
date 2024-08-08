@@ -8,6 +8,8 @@
 
 #include <map>
 #include <unordered_map>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 // Note: DO NOT include this header throughout polyscope, and do not directly make openGL calls. This header should only
 // be used to construct an instance of Engine. engine.h gives the render API, all render calls should pass through that.
@@ -404,6 +406,26 @@ private:
 }; // GLLightManager
 
 
+struct Glyph {
+  TextureBufferHandle textureID;
+  glm::ivec2 size;    // Size of glyph
+  glm::ivec2 bearing; // Offset from baseline to left/top of glyph
+  size_t advance;     // Horizontal offset to advance to next glyph
+}; // struct Glyph
+
+class GLTextRenderProgram : public GLShaderProgram {
+public:
+  GLTextRenderProgram(std::shared_ptr<GLCompiledProgram> compiledProgram);
+  virtual ~GLTextRenderProgram();
+
+  void draw() override;
+
+private:
+  std::map<GLchar, Glyph> glyphs;
+  
+}; // class GLTextRenderProgram
+
+
 class GLEngine : public Engine {
 public:
   GLEngine();
@@ -453,6 +475,10 @@ public:
   requestShader(const std::string& programName, const std::vector<std::string>& customRules,
                 ShaderReplacementDefaults defaults = ShaderReplacementDefaults::SceneObject) override;
 
+  std::shared_ptr<ShaderProgram> 
+  requestTextRenderer(const std::string& programName, const std::vector<std::string>& customRules,
+                ShaderReplacementDefaults defaults = ShaderReplacementDefaults::SceneObject) override;
+
   // === Implementation details
 
   // Add a shader programs/rules so that they can be requested above
@@ -482,7 +508,6 @@ protected:
   std::shared_ptr<GLCompiledProgram> getCompiledProgram(const std::string& programName,
                                                         const std::vector<std::string>& customRules,
                                                         ShaderReplacementDefaults defaults);
-
 };
 
 } // namespace backend_openGL3

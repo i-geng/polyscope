@@ -452,7 +452,6 @@ protected:
 
 }; // class LightManager
 
-
 class Engine {
 
 public:
@@ -576,6 +575,11 @@ public:
   // == create shader programs
   virtual std::shared_ptr<ShaderProgram>
   requestShader(const std::string& programName, const std::vector<std::string>& customRules,
+                ShaderReplacementDefaults defaults = ShaderReplacementDefaults::SceneObject) = 0;
+
+  // == create text render programs
+  virtual std::shared_ptr<ShaderProgram> 
+  requestTextRenderer(const std::string& programName, const std::vector<std::string>& customRules,
                 ShaderReplacementDefaults defaults = ShaderReplacementDefaults::SceneObject) = 0;
 
   // === The frame buffers used in the rendering pipeline
