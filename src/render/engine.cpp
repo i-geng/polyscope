@@ -486,7 +486,7 @@ bool Engine::bindSceneBuffer() {
   return sceneBuffer->bindForRendering();
 }
 
-void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture) {
+void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture, bool flatLighting) {
 
   glm::vec4 currV = getCurrentViewport();
 
@@ -509,7 +509,7 @@ void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture) {
   }
 
   // == Lazily regnerate the mapper if it doesn't match the current settings
-  if (!mapLight || currLightingSampleLevel != sampleLevel || currLightingTransparencyMode != transparencyMode) {
+  if (!mapLight || currLightingSampleLevel != sampleLevel || currLightingTransparencyMode != transparencyMode || isCurrFlatLighting != flatLighting) {
 
     std::string sampleRuleName = "";
     if (sampleLevel == 1) sampleRuleName = "DOWNSAMPLE_RESOLVE_1";
@@ -529,10 +529,15 @@ void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture) {
       break;
     }
 
-    mapLight = render::engine->requestShader("MAP_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
+    if (!flatLighting) {
+      mapLight = render::engine->requestShader("MAP_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
+    } else {
+      mapLight = render::engine->requestShader("MAP_FLAT_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
+    }
     mapLight->setAttribute("a_position", screenTrianglesCoords());
     currLightingSampleLevel = sampleLevel;
     currLightingTransparencyMode = transparencyMode;
+    isCurrFlatLighting = flatLighting;
   }
 
   mapLight->setUniform("u_bgColor", glm::vec3{view::bgColor[0], view::bgColor[1], view::bgColor[2]});

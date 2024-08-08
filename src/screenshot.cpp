@@ -25,6 +25,8 @@ size_t rasterizeTetraInd = 0;
 // Helper functions
 namespace {
 
+void prepReadBuffer(bool transparentBG, bool flatLighting = false);
+
 bool hasExtension(std::string str, std::string ext) {
 
   std::transform(str.begin(), str.end(), str.begin(), ::tolower);
@@ -37,10 +39,16 @@ bool hasExtension(std::string str, std::string ext) {
   }
 }
 
+std::string removeExtension(std::string fullname) {
+  size_t lastIndex = fullname.find_last_of(".");
+  std::string rawName = fullname.substr(0, lastIndex);
+  return rawName;
+}
+
 /* Book-keeping functionality shared across multiple functions before reading
  * a framebuffer.
  */
-void prepReadBuffer(bool transparentBG) {
+void prepReadBuffer(bool transparentBG, bool flatLighting) {
   render::engine->useAltDisplayBuffer = true;
   if (transparentBG) render::engine->lightCopy = true; // copy directly in to buffer without blending
 
@@ -51,7 +59,7 @@ void prepReadBuffer(bool transparentBG) {
   bool requestedAlready = redrawRequested();
   requestRedraw();
 
-  draw(false, false);
+  draw(false, false, flatLighting);
 
   if (requestedAlready) {
     requestRedraw();
@@ -251,13 +259,15 @@ void saveImageLMS_Q(std::string filename, const std::vector<unsigned char>& buff
     }
   }
 
-  saveImage("LMS_" + filename, &(lms_buff.front()), w, h, 3);
-  saveImage("Q_" + filename, &(q_buff.front()), w, h, 1);
+  std::string rawName = removeExtension(filename);
+  saveImage(rawName + "_LMS.png", &(lms_buff.front()), w, h, 3);
+  saveImage(rawName + "_Q.png", &(q_buff.front()), w, h, 1);
 }
 
 void saveImageFourGray(std::string filename, const std::vector<unsigned char>& buff, 
                        int w, int h) {
 
+  std::string rawName = removeExtension(filename);
   for (int ch = 0; ch < 4; ch++) {
     std::vector<unsigned char> ch_buff(w * h);
 
@@ -268,17 +278,16 @@ void saveImageFourGray(std::string filename, const std::vector<unsigned char>& b
       }
     }
 
-    saveImage(std::to_string(ch) + "_" + filename, &(ch_buff.front()), w, h, 1);
+    saveImage(rawName + "_" + std::to_string(ch) + ".png", &(ch_buff.front()), w, h, 1);
   }
 }
 
 void rasterizeTetra(std::string filename, SaveImageMode mode) { 
-  prepReadBuffer(true);
+  prepReadBuffer(true, true);
 
-  // We will grab sceneBufferFinal, which contains scene colors before tone mapping.
   int w = view::bufferWidth;
   int h = view::bufferHeight;
-  std::vector<unsigned char> buff = render::engine->sceneBufferFinal->readBuffer();
+  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
 
   // Save to file
   switch (mode) {
@@ -287,9 +296,12 @@ void rasterizeTetra(std::string filename, SaveImageMode mode) {
       break;
     case SaveImageMode::LMS_Q:
       saveImageLMS_Q(filename, buff, w, h);
+      break;
     case SaveImageMode::FourGray:
       saveImageFourGray(filename, buff, w, h);
+      break;
     default:
+      std::cout << "Invalid SaveImageMode" << std::endl;
       break;
   }
 
@@ -297,12 +309,12 @@ void rasterizeTetra(std::string filename, SaveImageMode mode) {
   render::engine->lightCopy = false;
 } 
 
-void rasterizeTetra() {
+void rasterizeTetra(SaveImageMode mode) {
   char buff[50];
   snprintf(buff, 50, "tetra_%06zu%s", state::rasterizeTetraInd, options::screenshotExtension.c_str());
   std::string defaultName(buff);
 
-  rasterizeTetra(defaultName);
+  rasterizeTetra(defaultName, mode);
 
   state::rasterizeTetraInd++;
 }

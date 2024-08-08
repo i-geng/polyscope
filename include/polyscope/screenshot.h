@@ -24,7 +24,7 @@ void closeVideoFile(FILE* fd);
 
 // Rasterize scene from the current view and write to file.
 void rasterizeTetra(std::string filename, SaveImageMode mode = SaveImageMode::RG1G2B);
-void rasterizeTetra(); // automatic file names like `screenshot_000000.png`
+void rasterizeTetra(SaveImageMode mode = SaveImageMode::RG1G2B); // automatic file names like `screenshot_000000.png`
 
 namespace state {
 
