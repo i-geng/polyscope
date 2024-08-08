@@ -10,6 +10,7 @@ namespace backend_openGL3 {
 
 // High level pipeline
 extern const ShaderStageSpecification MAP_LIGHT_FRAG_SHADER;
+extern const ShaderStageSpecification MAP_LIGHT_FLAT_FRAG_SHADER;
 
 // Rules
 extern const ShaderReplacementRule DOWNSAMPLE_RESOLVE_1;

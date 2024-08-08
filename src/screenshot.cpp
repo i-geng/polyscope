@@ -40,7 +40,7 @@ bool hasExtension(std::string str, std::string ext) {
 /* Book-keeping functionality shared across multiple functions before reading
  * a framebuffer.
  */
-void prepReadBuffer(bool transparentBG) {
+void prepReadBuffer(bool transparentBG, bool flat_lighting = false) {
   render::engine->useAltDisplayBuffer = true;
   if (transparentBG) render::engine->lightCopy = true; // copy directly in to buffer without blending
 
@@ -51,7 +51,7 @@ void prepReadBuffer(bool transparentBG) {
   bool requestedAlready = redrawRequested();
   requestRedraw();
 
-  draw(false, false);
+  draw(false, false, flat_lighting);
 
   if (requestedAlready) {
     requestRedraw();
@@ -273,12 +273,11 @@ void saveImageFourGray(std::string filename, const std::vector<unsigned char>& b
 }
 
 void rasterizeTetra(std::string filename, SaveImageMode mode) { 
-  prepReadBuffer(true);
+  prepReadBuffer(true, true);
 
-  // We will grab sceneBufferFinal, which contains scene colors before tone mapping.
   int w = view::bufferWidth;
   int h = view::bufferHeight;
-  std::vector<unsigned char> buff = render::engine->sceneBufferFinal->readBuffer();
+  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
 
   // Save to file
   switch (mode) {
@@ -297,12 +296,12 @@ void rasterizeTetra(std::string filename, SaveImageMode mode) {
   render::engine->lightCopy = false;
 } 
 
-void rasterizeTetra() {
+void rasterizeTetra(SaveImageMode mode) {
   char buff[50];
   snprintf(buff, 50, "tetra_%06zu%s", state::rasterizeTetraInd, options::screenshotExtension.c_str());
   std::string defaultName(buff);
 
-  rasterizeTetra(defaultName);
+  rasterizeTetra(defaultName, mode);
 
   state::rasterizeTetraInd++;
 }

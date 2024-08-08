@@ -100,6 +100,77 @@ R"(
 )"
 };
 
+
+const ShaderStageSpecification MAP_LIGHT_FLAT_FRAG_SHADER = {
+    
+    // stage
+    ShaderStageType::Fragment,
+    
+    // uniforms
+    { 
+        {"u_bgColor", RenderDataType::Vector3Float},
+        {"u_bgAlpha", RenderDataType::Float},
+        {"u_exposure", RenderDataType::Float},
+        {"u_gamma", RenderDataType::Float},
+        {"u_whiteLevel", RenderDataType::Float},
+        {"u_texelSize", RenderDataType::Vector2Float},
+    }, 
+
+    // attributes
+    { },
+    
+    // textures 
+    { 
+      {"t_image", 2},
+    },
+    
+    // source 
+R"(
+
+      in vec2 tCoord;
+      uniform sampler2D t_image;
+      uniform vec3 u_bgColor;
+      uniform float u_bgAlpha;
+      uniform float u_exposure;
+      uniform float u_whiteLevel;
+      uniform float u_gamma;
+      uniform vec2 u_texelSize;
+      layout (location = 0) out vec4 outputVal;
+
+      float luminance(vec3 v);
+
+      vec4 sampleSingle(vec2 tCoord) {
+          vec4 sampleVal = texture(t_image, tCoord);
+
+          ${ SAMPLE_SINGLE }$
+
+          return sampleVal;
+      }
+
+      vec4 imageSample() {
+  
+        // This function is written like this to hopefully make it as easy as possible to unroll
+
+        vec4 result = vec4(0., 0., 0., 0.);
+
+        ${ DOWNSAMPLE_RESOLVE }$
+          
+        return result / (downsampleFactor * downsampleFactor);
+      } 
+
+      void main() {
+
+        // these are defined to be premultiplied
+        vec4 color4 = imageSample();
+        vec3 color = color4.rgb;
+        float alpha = color4.a;
+
+        outputVal = vec4(color, alpha);
+    }  
+)"
+};
+
+
 // === Rules
 
 const ShaderReplacementRule DOWNSAMPLE_RESOLVE_1 (

@@ -486,7 +486,7 @@ bool Engine::bindSceneBuffer() {
   return sceneBuffer->bindForRendering();
 }
 
-void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture) {
+void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture, bool flat_lighting) {
 
   glm::vec4 currV = getCurrentViewport();
 
@@ -529,7 +529,11 @@ void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture) {
       break;
     }
 
-    mapLight = render::engine->requestShader("MAP_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
+    if (!flat_lighting) {
+      mapLight = render::engine->requestShader("MAP_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
+    } else {
+      mapLight = render::engine->requestShader("MAP_FLAT_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
+    }
     mapLight->setAttribute("a_position", screenTrianglesCoords());
     currLightingSampleLevel = sampleLevel;
     currLightingTransparencyMode = transparencyMode;

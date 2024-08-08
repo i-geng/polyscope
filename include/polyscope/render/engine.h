@@ -476,7 +476,7 @@ public:
   virtual void resizeScreenBuffers(); // applies to all buffers tied to display size
   virtual void setScreenBufferViewports();
   virtual void
-  applyLightingTransform(std::shared_ptr<TextureBuffer>& texture); // tonemap and gamma correct, render to active buffer
+  applyLightingTransform(std::shared_ptr<TextureBuffer>& texture, bool flat_lighting); // tonemap and gamma correct, render to active buffer
   void updateMinDepthTexture();
   void renderBackground(); // respects background setting
 

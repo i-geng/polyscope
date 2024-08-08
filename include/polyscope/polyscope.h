@@ -156,7 +156,7 @@ void refresh();
 
 // Main draw call, which handles all 3D rendering & UI management.
 // End users generally should not call this function. Consider requestRedraw() or screenshot().
-void draw(bool withUI = true, bool withContextCallback = true);
+void draw(bool withUI = true, bool withContextCallback = true, bool flat_lighting = false);
 
 // Request that the 3D scene be redrawn for the next frame. Should be called anytime something changes in the scene.
 void requestRedraw();
