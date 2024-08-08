@@ -671,6 +671,7 @@ protected:
   // Cached lazy seettings for the resolve and relight program
   int currLightingSampleLevel = -1;
   TransparencyMode currLightingTransparencyMode = TransparencyMode::None;
+  bool isCurrFlatLighting = false;
 
   // Helpers
   void configureImGui();
