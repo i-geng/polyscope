@@ -110,6 +110,88 @@ void closeVideoFile(FILE* fd) {
   pclose(fd);
 }
 
+TetraFileDescriptors openTetraVideoFileLMS_Q(std::string filename, int fps) {
+  int w = view::bufferWidth;
+  int h = view::bufferHeight;
+  std::string rawName = removeExtension(filename);
+
+  std::string cmd = "ffmpeg -r " + std::to_string(fps) + " "
+                    "-f rawvideo "    // expect raw video input
+                    "-s " + std::to_string(w) + "x" + std::to_string(h) + " " // video dimensions
+                    "-i - "           // FFMpeg will read input from stdin
+                    "-threads 0 "     // use optimal number of threads
+                    "-preset fast "   // use fast encoding preset
+                    "-y "             // overwrite output file without asking
+                    "-pix_fmt yuv420p " // convert the pixel format to YUV420p for output
+                    "-crf 21 "        // set constant rate factor 
+                    "-vf \"vflip,null\" "      // buffer is from OpenGL, so need to vertically flip
+                    + rawName;
+
+  // FFMpeg command for LMS
+  std::string cmd_lms = cmd + "_LMS.mp4";
+
+  // FFMpeg command for Q
+  std::string cmd_q = cmd + "_Q.mp4";
+
+  TetraFileDescriptors tfds;
+  
+  tfds.fd0 = popen(cmd_lms.c_str(), "w");
+  tfds.fd1 = popen(cmd_q.c_str(), "w");
+  tfds.mode = SaveImageMode::LMS_Q;
+
+  return tfds;
+}
+
+TetraFileDescriptors openTetraVideoFile(std::string filename, int fps, SaveImageMode mode) {
+  switch (mode) {
+    case SaveImageMode::LMS_Q:
+      return openTetraVideoFileLMS_Q(filename, fps);
+      break;
+    default:
+      break;
+  }
+}
+
+void writeTetraVideoFrameLMS_Q(TetraFileDescriptors tfds) {
+  prepReadBuffer(true, true);
+
+  int w = view::bufferWidth;
+  int h = view::bufferHeight;
+  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
+
+  std::vector<unsigned char> lms_buff(3 * w * h);
+  std::vector<unsigned char> q_buff(3 * w * h);
+
+  for (int j = 0; j < h; j++) {
+    for (int i = 0; i < w; i++) {
+      int index = i + j * w;
+      for (int k = 0; k < 3; k++) {
+        lms_buff[3 * index + k] = buff[4 * index + k];
+        q_buff[3 * index + k] = buff[4 * index + 3];
+      }
+    }
+  }
+
+  // Write to the FFmpeg pipes
+  fwrite(&(lms_buff.front()), sizeof(unsigned char) * w * h * 3, 1, tfds.fd0);
+  fwrite(&(q_buff.front()), sizeof(unsigned char) * w * h * 3, 1, tfds.fd1);
+
+  render::engine->useAltDisplayBuffer = false;
+  render::engine->lightCopy = false; 
+}
+
+void writeTetraVideoFrame(TetraFileDescriptors tfds) {
+
+  switch(tfds.mode) {
+    case SaveImageMode::LMS_Q:
+      writeTetraVideoFrameLMS_Q(tfds);
+      break;
+    default:
+      break;
+  }
+
+}
+
 
 void saveImage(std::string filename, unsigned char* buffer, int w, int h, int channels) {
 
