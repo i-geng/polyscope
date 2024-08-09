@@ -16,36 +16,25 @@ void resetScreenshotIndex();
 // the dimensions are view::bufferWidth and view::bufferHeight , with entries RGBA at 1 byte each.
 std::vector<unsigned char> screenshotToBuffer(bool transparentBG = true);
 
-// Rasterize scene from the current view and write to file.
-void rasterizeTetra(std::string filename, SaveImageMode mode = SaveImageMode::RG1G2B);
-void rasterizeTetra(SaveImageMode mode = SaveImageMode::RG1G2B); // automatic file names like `screenshot_000000.png`
-
 // Write a video frame of the current view to .mp4 file.
 void writeVideoFrame(FILE* fd, bool transparentBG = true);
 FILE* openVideoFile(std::string filename, int fps = 60);
 void closeVideoFile(FILE* fd);
 
-<<<<<<< Updated upstream
 // Rasterize scene from the current view and write to file.
 void rasterizeTetra(std::string filename, SaveImageMode mode = SaveImageMode::RG1G2B);
-<<<<<<< Updated upstream
 void rasterizeTetra(SaveImageMode mode = SaveImageMode::RG1G2B); // automatic file names like `screenshot_000000.png`
-=======
-void rasterizeTetra(); // automatic file names like `screenshot_000000.png`
-=======
+
 // Write tetra videos to .mp4 files
 struct TetraFileDescriptors {
-  FILE* fd0 = nullptr;
-  FILE* fd1 = nullptr;
-  FILE* fd2 = nullptr;
-  FILE* fd3 = nullptr;
+  static const int numFiles = 4;
+  FILE* files[numFiles] = {nullptr};
   SaveImageMode mode = SaveImageMode::LMS_Q;
 }; // struct TetraFileDescriptors
 
-void writeTetraVideoFrame(TetraFileDescriptors tfds);
-TetraFileDescriptors openTetraVideoFile(std::string filename, int fps = 60, SaveImageMode mode = SaveImageMode::LMS_Q);
->>>>>>> Stashed changes
->>>>>>> Stashed changes
+void writeTetraVideoFrame(TetraFileDescriptors* tfds);
+TetraFileDescriptors* openTetraVideoFile(std::string filename, int fps = 60, SaveImageMode mode = SaveImageMode::LMS_Q);
+void closeTetraVideoFile(TetraFileDescriptors* tfds);
 
 namespace state {
 
