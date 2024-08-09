@@ -110,6 +110,16 @@ void closeVideoFile(FILE* fd) {
   pclose(fd);
 }
 
+TetraFileDescriptors* openTetraVideoFileRG1G2B(std::string cmd, int fps) {
+  TetraFileDescriptors* tfds = new TetraFileDescriptors();
+  tfds->mode = SaveImageMode::RG1G2B;
+
+  std::string cmd_rg1g2b = cmd + ".mp4";
+  tfds->files[0] = popen(cmd_rg1g2b.c_str(), "w");
+
+  return tfds;
+}
+
 TetraFileDescriptors* openTetraVideoFileLMS_Q(std::string cmd, int fps) {
   TetraFileDescriptors* tfds = new TetraFileDescriptors();
   tfds->mode = SaveImageMode::LMS_Q;
@@ -155,6 +165,9 @@ TetraFileDescriptors* openTetraVideoFile(std::string filename, int fps, SaveImag
                     + rawName;
 
   switch (mode) {
+    case SaveImageMode::RG1G2B:
+      return openTetraVideoFileRG1G2B(cmd, fps);
+      break;
     case SaveImageMode::LMS_Q:
       return openTetraVideoFileLMS_Q(cmd, fps);
       break;
@@ -176,6 +189,10 @@ void closeTetraVideoFile(TetraFileDescriptors* tfds) {
     }
   }
   delete tfds;
+}
+
+void writeTetraVideoFramRG1G2B(TetraFileDescriptors* tfds, const std::vector<unsigned char>& buff,                               int w, int h) {
+  fwrite(&(buff.front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[0]); 
 }
 
 void writeTetraVideoFrameLMS_Q(TetraFileDescriptors* tfds, const std::vector<unsigned char>& buff,
@@ -214,7 +231,7 @@ void writeTetraVideoFrameFourGray(TetraFileDescriptors* tfds, const std::vector<
       for (size_t ch = 0; ch < buff_chs.size(); ch++) {
         // Copy the same value into each of the R, G, B channels
         for (int k = 0; k < 3; k++) {
-          buff_chs[ch][4 * index + k] = buff[4 * index + k];
+          buff_chs[ch][4 * index + k] = buff[4 * index + ch];
         }
 
         // Set alpha to 1
@@ -238,6 +255,9 @@ void writeTetraVideoFrame(TetraFileDescriptors* tfds) {
   std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
 
   switch(tfds->mode) {
+    case SaveImageMode::RG1G2B:
+      writeTetraVideoFramRG1G2B(tfds, buff, w, h);
+      break;
     case SaveImageMode::LMS_Q:
       writeTetraVideoFrameLMS_Q(tfds, buff, w, h);
       break;
