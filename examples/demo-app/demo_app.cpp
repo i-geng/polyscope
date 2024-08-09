@@ -92,17 +92,20 @@ void rotate_teapot() {
   std::string name = "teapot";
   auto psMesh = polyscope::getSurfaceMesh(name);
   
-  FILE* fd = polyscope::openVideoFile("teapot.mp4");
+  // FILE* fd = polyscope::openVideoFile("teapot.mp4");
+  
+  auto tfds = polyscope::openTetraVideoFile("teapot.mp4");
 
-  for (size_t i = 0; i < 60; i++) {
-    glm::mat4x4 currentTransform = psMesh->getTransform();
-    glm::mat4x4 nextTransform = glm::rotate(currentTransform, glm::radians(0.25f), glm::vec3(0.0, 1.0, 0.0));
-    psMesh->setTransform(nextTransform);
+  for (size_t i = 0; i < 30; i++) {
+    // glm::mat4x4 currentTransform = psMesh->getTransform();
+    // glm::mat4x4 nextTransform = glm::rotate(currentTransform, glm::radians(0.25f), glm::vec3(0.0, 1.0, 0.0));
+    // psMesh->setTransform(nextTransform);
 
-    polyscope::writeVideoFrame(fd);
+    polyscope::writeTetraVideoFrame(tfds);
+    // polyscope::writeVideoFrame(fd);
     // polyscope::screenshot();
   }
-  polyscope::closeVideoFile(fd);
+  // polyscope::closeVideoFile(fd);
   exit(0);
 }
 
@@ -121,6 +124,15 @@ void processFileOBJ(std::string filename) {
   }
   auto psMesh = polyscope::registerSurfaceMesh(niceName, vertexPositionsGLM, faceIndices);
 
+
+  // Add a tetracolor to each face
+  std::vector<glm::vec4> faceTetracolors(faceIndices.size());
+  for (size_t i = 0; i < faceIndices.size(); i++) {
+    faceTetracolors[i] = glm::vec4(0.7, 0.3, 0.4, 0.8);
+  }
+  psMesh->addFaceTetracolorQuantity("face tetracolor", faceTetracolors);
+  psMesh->setMaterial("flat_tetra");
+
   // Add random color to each vertex
   // std::vector<glm::vec3> vertexColors(vertexPositions.size());
   // for (size_t i = 0; i < vertexPositions.size(); i++) {
@@ -134,11 +146,11 @@ void processFileOBJ(std::string filename) {
   // psMesh->addVertexColorQuantity("random colors", vertexColors);
 
   // Add random color to each face
-  std::vector<polyscope::Tetracolor> faceColors(faceIndices.size());
-  for (size_t i = 0; i < faceIndices.size(); i++) {
-    faceColors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit());
-  }
-  psMesh->addFaceColorQuantity("random colors", faceColors);
+  // std::vector<polyscope::Tetracolor> faceColors(faceIndices.size());
+  // for (size_t i = 0; i < faceIndices.size(); i++) {
+  //   faceColors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit());
+  // }
+  // psMesh->addFaceColorQuantity("random colors", faceColors);
 
   return;
 
@@ -895,7 +907,7 @@ int main(int argc, char** argv) {
    processFile(s);
   }
   
-  
+  /*  
 
   // Create a point cloud
   for (int j = 0; j < 1; j++) {
@@ -968,8 +980,9 @@ int main(int argc, char** argv) {
     // color_quantity->setEnabled(true);
   }
   
-  
-  polyscope::rasterizeTetra();
+  */
+
+  // polyscope::rasterizeTetra();
   // polyscope::screenshot();
 
   // loadFloatingImageData();
@@ -983,6 +996,7 @@ int main(int argc, char** argv) {
 
 
   // rotate_teapot();
+
 
   // main loop using manual frameTick() instead
   // while (true) {

@@ -6,7 +6,6 @@
 
 namespace polyscope {
 
-
 // Take a screenshot from the current view and write to file
 void screenshot(std::string filename, bool transparentBG = true);
 void screenshot(bool transparentBG = true); // automatic file names like `screenshot_000000.png`
@@ -26,10 +25,22 @@ void closeVideoFile(FILE* fd);
 void rasterizeTetra(std::string filename, SaveImageMode mode = SaveImageMode::RG1G2B);
 void rasterizeTetra(SaveImageMode mode = SaveImageMode::RG1G2B); // automatic file names like `screenshot_000000.png`
 
+// Write tetra videos to .mp4 files
+struct TetraFileDescriptors {
+  static const int numFiles = 4;
+  FILE* files[numFiles] = {nullptr};
+  SaveImageMode mode = SaveImageMode::LMS_Q;
+}; // struct TetraFileDescriptors
+
+void writeTetraVideoFrame(TetraFileDescriptors* tfds);
+TetraFileDescriptors* openTetraVideoFile(std::string filename, int fps = 60, SaveImageMode mode = SaveImageMode::LMS_Q);
+void closeTetraVideoFile(TetraFileDescriptors* tfds);
+
 namespace state {
 
 // The current screenshot index for automatically numbered screenshots
 extern size_t screenshotInd;
+extern size_t rasterizeTetraInd;
 
 } // namespace state
 } // namespace polyscope
