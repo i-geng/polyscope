@@ -60,12 +60,14 @@ void TextObject::buildMesh() {
 
   SurfaceMesh* s = new SurfaceMesh(name, vertexPositions, faceIndices);
   textMesh = std::unique_ptr<SurfaceMesh>(s);
+
+
+  setTextObjectAttributes(*textRenderProgram);
 }
 
 void TextObject::draw() {
   if (!isEnabled()) return;
 
-  setTextObjectAttributes(*textRenderProgram);
 
   // textMesh->draw();
   setStructureUniforms(*textRenderProgram);

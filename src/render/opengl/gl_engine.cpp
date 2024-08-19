@@ -2305,7 +2305,17 @@ void GLTextRenderProgram::draw() {
   float scale = 5.0;
   glm::vec3 color = glm::vec3(1.0, 0.0, 1.0);
 
-  GLShaderProgram::draw();
+  
+  Glyph g = glyphs['A'];
+
+  glBindTexture(GL_TEXTURE_2D, g.textureID);
+
+  std::cout << "GLTextRenderProgram::draw()" << std::endl;
+
+  // GLShaderProgram::draw();
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+
+  glBindTexture(GL_TEXTURE_2D, 0);
 
   return;
 }

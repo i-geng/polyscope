@@ -46,29 +46,26 @@ const ShaderStageSpecification TEXT_OBJECT_FRAG_SHADER = {
  
   ShaderStageType::Fragment,
 
-  // uniforms
-  {
-  },
+  {}, // uniforms
 
-  // attributes
-  {
-  },
+  {}, // attributes
 
   {}, // textures
 
   // source
 R"(
       in vec2 a_textureCoordsToFrag;
-      // uniform sampler2D t_image;
+      uniform sampler2D t_image;
       layout(location = 0) out vec4 outputF;
 
       void main()
       {
-        // vec4 sampled = vec4(1.0, 1.0, 1.0, texture(t_image, a_textureCoordsToFrag).r);
-        // outputF = vec4(0.5, 0.5, 1.0, 1.0) * sampled;
+        float t_val = texture(t_image, a_textureCoordsToFrag).r;
+        vec4 sampled = vec4(1.0, 1.0, 1.0, t_val);
+        outputF = vec4(0.5, 0.5, 1.0, 1.0) * sampled;
         // vec4 debug = vec4(a_textureCoordsToFrag, 1.0);
         // outputF = vec4(1.0, 0.0, 1.0, 1.0);
-        outputF = vec4(a_textureCoordsToFrag, 0.5, 1.0);
+        // outputF = vec4(a_textureCoordsToFrag, 0.5, 1.0);
       }
 
 )"
