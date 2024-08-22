@@ -202,6 +202,7 @@ SET(SRCS
   surface_mesh.cpp
   surface_color_quantity.cpp
   surface_tetracolor_quantity.cpp
+  surface_six_channel_color_quantity.cpp
   surface_scalar_quantity.cpp
   surface_vector_quantity.cpp
   surface_parameterization_quantity.cpp
@@ -336,6 +337,8 @@ SET(HEADERS
   ${INCLUDE_ROOT}/screenshot.h
   ${INCLUDE_ROOT}/simple_triangle_mesh.h
   ${INCLUDE_ROOT}/simple_triangle_mesh.ipp
+  ${INCLUDE_ROOT}/six_channel_color_quantity.h
+  ${INCLUDE_ROOT}/six_channel_color_quantity.ipp
   ${INCLUDE_ROOT}/slice_plane.h
   ${INCLUDE_ROOT}/standardize_data_array.h
   ${INCLUDE_ROOT}/structure.h
@@ -347,6 +350,7 @@ SET(HEADERS
   ${INCLUDE_ROOT}/surface_mesh_quantity.h
   ${INCLUDE_ROOT}/surface_parameterization_quantity.h
   ${INCLUDE_ROOT}/surface_scalar_quantity.h
+  ${INCLUDE_ROOT}/surface_six_channel_color_quantity.h
   ${INCLUDE_ROOT}/surface_vector_quantity.h
   ${INCLUDE_ROOT}/tetracolor_quantity.h
   ${INCLUDE_ROOT}/tetracolor_quantity.ipp

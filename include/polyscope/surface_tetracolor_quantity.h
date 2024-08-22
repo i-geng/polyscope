@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "polyscope/tetracolor_quantity.h"

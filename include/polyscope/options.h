@@ -74,6 +74,8 @@ extern bool screenshotTransparency;     // controls whether screenshots taken by
 extern std::string screenshotExtension; // sets the extension used for automatically-numbered screenshots (e.g. by
                                         // clicking the GUI button)
 
+extern bool drawEvenFrame; // for even-odd frame interleaving:w
+
 // === Rendering parameters
 
 // SSAA scaling in pixel multiples

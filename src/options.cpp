@@ -26,6 +26,8 @@ bool hideWindowAfterShow = true;
 bool screenshotTransparency = true;
 std::string screenshotExtension = ".png";
 
+bool drawEvenFrame = false;
+
 // == Scene options
 
 // Ground plane / shadows
