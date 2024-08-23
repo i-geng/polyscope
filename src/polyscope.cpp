@@ -812,12 +812,6 @@ void draw(bool withUI, bool withContextCallback, bool flatLighting) {
   render::engine->setBackgroundAlpha(0);
   render::engine->clearDisplay();
 
-  if (!options::drawEvenFrame) {
-    options::drawEvenFrame = true;
-    return;
-  }
-  options::drawEvenFrame = false;
-
   if (withUI) {
     render::engine->ImGuiNewFrame();
 

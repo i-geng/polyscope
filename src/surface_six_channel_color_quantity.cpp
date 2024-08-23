@@ -17,19 +17,23 @@ SurfaceSixChannelColorQuantity::SurfaceSixChannelColorQuantity(std::string name,
 void SurfaceSixChannelColorQuantity::draw() {
   if (!isEnabled()) return;
 
-  std::shared_ptr<render::ShaderProgram> program;
-  if (true) {
-    program = programEven;
+  if ((programEven == nullptr) || (programOdd == nullptr)) {
+    createProgram();
   }
 
-  if (program == nullptr) {
-    createProgram();
+  std::shared_ptr<render::ShaderProgram> program;
+  // TODO: choose even or odd program based on passed in boolean flag
+  // don't read global state, because its possible it might have changed
+  // in between sub-frame drawing calls
+  if (true) {
+    program = programEven;
   }
 
   // Set uniforms
   parent.setStructureUniforms(*program);
   parent.setSurfaceMeshUniforms(*program);
-
+  render::engine->setMaterialUniforms(*program, "flat");
+  
   program->draw();
 }
 
@@ -79,10 +83,56 @@ void SurfaceVertexSixChannelColorQuantity::createProgram() {
   // Set attributes
   parent.setMeshGeometryAttributes(*programEven);
   programEven->setAttribute("a_color", colorsEven.getIndexedRenderAttributeBuffer(parent.triangleVertexInds));
-  render::engine->setMaterial(*programEven, parent.getMaterial());
+  render::engine->setMaterial(*programEven, "flat");
 
   parent.setMeshGeometryAttributes(*programOdd);
   programOdd->setAttribute("a_color", colorsOdd.getIndexedRenderAttributeBuffer(parent.triangleVertexInds));
+  render::engine->setMaterial(*programOdd, "flat");
+}
+
+
+// ========================================================
+// ==========            Face Color              ==========
+// ========================================================
+
+SurfaceFaceSixChannelColorQuantity::SurfaceFaceSixChannelColorQuantity(
+                                      std::string name,
+                                      SurfaceMesh& mesh_,
+                                      std::vector<glm::vec3> colorsEven_,
+                                      std::vector<glm::vec3> colorsOdd_)
+  : SurfaceSixChannelColorQuantity(name, mesh_, "face", colorsEven_, colorsOdd_) {}
+
+void SurfaceFaceSixChannelColorQuantity::createProgram() {
+
+  // clang-format off
+  programEven = render::engine->requestShader("MESH",
+    render::engine->addMaterialRules("flat",
+      addSixChannelColorRules(
+        parent.addSurfaceMeshRules(
+          {"MESH_PROPAGATE_COLOR", "SHADE_COLOR"}
+        )
+      )
+    )
+  );
+  
+  programOdd = render::engine->requestShader("MESH",
+    render::engine->addMaterialRules("flat",
+      addSixChannelColorRules(
+        parent.addSurfaceMeshRules(
+          {"MESH_PROPAGATE_COLOR", "SHADE_COLOR"}
+        )
+      )
+    )
+  );
+  // clang-format on
+
+  // Set attributes
+  parent.setMeshGeometryAttributes(*programEven);
+  programEven->setAttribute("a_color", colorsEven.getIndexedRenderAttributeBuffer(parent.triangleFaceInds));
+  render::engine->setMaterial(*programEven, parent.getMaterial());
+
+  parent.setMeshGeometryAttributes(*programOdd);
+  programOdd->setAttribute("a_color", colorsOdd.getIndexedRenderAttributeBuffer(parent.triangleFaceInds));
   render::engine->setMaterial(*programOdd, parent.getMaterial());
 }
 
