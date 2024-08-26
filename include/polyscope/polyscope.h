@@ -165,6 +165,9 @@ void refresh();
 // End users generally should not call this function. Consider requestRedraw() or screenshot().
 void draw(bool withUI = true, bool withContextCallback = true, bool flatLighting = false);
 
+// Debug function for even-odd rendering
+void drawBlankFrame(bool withUI = true, bool withContextCallback = true);
+
 // Request that the 3D scene be redrawn for the next frame. Should be called anytime something changes in the scene.
 void requestRedraw();
 
@@ -190,6 +193,7 @@ void buildPolyscopeGui();
 void buildStructureGui();
 void buildPickGui();
 void buildUserGuiAndInvokeCallback();
+void buildEvenOddGui(); // custom debug GUI for even-odd rendering
 
 
 // === Utility
@@ -197,6 +201,8 @@ void buildUserGuiAndInvokeCallback();
 // Execute one iteration of the main loop
 // Exposed so that some weird flow (eg, errors) can re-enter the main loop when appropriate. Be careful!
 void mainLoopIteration();
+// Same as mainLoopIteration(), but with finer control over the FPS
+void mainLoopIterationEvenOdd(bool drawBlank = false);
 void initializeImGUIContext();
 void drawStructures();
 void drawStructuresDelayed();

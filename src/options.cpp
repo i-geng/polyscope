@@ -12,6 +12,7 @@ std::string printPrefix = "[polyscope] ";
 bool errorsThrowExceptions = false;
 bool debugDrawPickBuffer = false;
 int maxFPS = 60;
+int targetSleep = 85;
 bool enableVSync = true;
 bool usePrefsFile = true;
 bool initializeWithDefaultStructures = true;
@@ -26,7 +27,7 @@ bool hideWindowAfterShow = true;
 bool screenshotTransparency = true;
 std::string screenshotExtension = ".png";
 
-bool drawEvenFrameFirst = false;
+bool drawEvenFrameFirst = true;
 
 // == Scene options
 

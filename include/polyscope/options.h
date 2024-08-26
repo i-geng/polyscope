@@ -31,6 +31,9 @@ extern bool errorsThrowExceptions;
 // Don't let the main loop run at more than this speed. (-1 disables) (default: 60)
 extern int maxFPS;
 
+// Adjust to hit target FPS (default: 85)
+extern int targetSleep;
+
 // If enable or disable swap synchronization (limits render ray to display refresh rate). (default: true)
 // NOTE: some platforms may ignore the setting.
 extern bool enableVSync;

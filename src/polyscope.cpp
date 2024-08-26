@@ -53,6 +53,10 @@ float rightWindowsWidth = 500;
 
 auto lastMainLoopIterTime = std::chrono::steady_clock::now();
 
+// Some state for even-odd rendering
+bool blackOutEvenFrames = false;
+bool blackOutOddFrames = false;
+
 const std::string prefsFilename = ".polyscope.ini";
 
 void readPrefsFile() {
@@ -305,11 +309,13 @@ void fullFrameTick() {
   render::engine->showWindow();
 
   // Draw a sub-frame
-  mainLoopIteration();
+  bool drawBlank = state::isEvenFrame ? blackOutEvenFrames : blackOutOddFrames;
+  mainLoopIterationEvenOdd(drawBlank);
 
   // Draw the next sub-frame
   state::isEvenFrame = !state::isEvenFrame;
-  mainLoopIteration();
+  drawBlank = state::isEvenFrame ? blackOutEvenFrames : blackOutOddFrames;
+  mainLoopIterationEvenOdd(drawBlank);
 
   frameTickStack--;
 }
@@ -719,7 +725,7 @@ void buildStructureGui() {
   // Create window
   static bool showStructureWindow = true;
 
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + 2 * imguiStackMargin));
+  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + 3 * imguiStackMargin));
   ImGui::SetNextWindowSize(
       ImVec2(leftWindowsWidth, view::windowHeight - lastWindowHeightPolyscope - 3 * imguiStackMargin));
   ImGui::Begin("Structures", &showStructureWindow);
@@ -830,6 +836,31 @@ void buildUserGuiAndInvokeCallback() {
   }
 }
 
+void buildEvenOddGui() {
+  // Create window
+  static bool showEvenOddWindow = true;
+
+  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + 2 * imguiStackMargin));
+  ImGui::SetNextWindowSize(
+      ImVec2(leftWindowsWidth, 0.));
+
+  ImGui::Begin("Even-Odd", &showEvenOddWindow);
+
+  // Checkbox to black out even frames
+  ImGui::Checkbox("Black out even frames", &blackOutEvenFrames);
+
+  // Checkbox to black out odd frames
+  ImGui::Checkbox("Black out odd frames", &blackOutOddFrames);
+  
+  //Checkbox to draw even frames first
+  ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
+
+  lastWindowHeightPolyscope += imguiStackMargin + ImGui::GetWindowHeight();
+  leftWindowsWidth = ImGui::GetWindowWidth();
+
+  ImGui::End();
+}
+
 void draw(bool withUI, bool withContextCallback, bool flatLighting) {
   processLazyProperties();
 
@@ -860,6 +891,7 @@ void draw(bool withUI, bool withContextCallback, bool flatLighting) {
       if (options::buildGui) {
         if (options::buildDefaultGuiPanels) {
           buildPolyscopeGui();
+          buildEvenOddGui();
           buildStructureGui();
           buildPickGui();
         }
@@ -907,6 +939,77 @@ void draw(bool withUI, bool withContextCallback, bool flatLighting) {
 }
 
 
+void drawBlankFrame(bool withUI, bool withContextCallback) {
+  processLazyProperties();
+
+  // Update buffer and context
+  render::engine->makeContextCurrent();
+  render::engine->bindDisplay();
+  render::engine->setBackgroundColor({view::bgColor[0], view::bgColor[1], view::bgColor[2]});
+  render::engine->setBackgroundAlpha(0);
+  render::engine->clearDisplay();
+
+  if (withUI) {
+    render::engine->ImGuiNewFrame();
+
+    processInputEvents();
+    view::updateFlight();
+    showDelayedWarnings();
+  }
+
+  // Build the GUI components
+  if (withUI) {
+    if (contextStack.back().drawDefaultUI) {
+
+      // Note: It is important to build the user GUI first, because it is likely that callbacks there will modify
+      // polyscope data. If we do these modifications happen later in the render cycle, they might invalidate data which
+      // is necessary when ImGui::Render() happens below.
+      buildUserGuiAndInvokeCallback();
+
+      if (options::buildGui) {
+        if (options::buildDefaultGuiPanels) {
+          buildPolyscopeGui();
+          buildEvenOddGui();
+          buildStructureGui();
+          buildPickGui();
+        }
+
+        for (WeakHandle<Widget> wHandle : state::widgets) {
+          if (wHandle.isValid()) {
+            Widget& w = wHandle.get();
+            w.buildGUI();
+          }
+        }
+      }
+    }
+  }
+
+  // Execute the context callback, if there is one.
+  // This callback is a Polyscope implementation detail, which is distinct from the userCallback (which gets called
+  // above)
+  if (withContextCallback && contextStack.back().callback) {
+    (contextStack.back().callback)();
+  }
+
+  processLazyProperties();
+
+  // Draw the GUI
+  if (withUI) {
+    // render widgets
+    render::engine->bindDisplay();
+    for (WeakHandle<Widget> wHandle : state::widgets) {
+      if (wHandle.isValid()) {
+        Widget& w = wHandle.get();
+        w.draw();
+      }
+    }
+
+    render::engine->bindDisplay();
+    render::engine->ImGuiRender();
+  }
+}
+
+
 void mainLoopIteration() {
 
   processLazyProperties();
@@ -921,16 +1024,38 @@ void mainLoopIteration() {
   purgeWidgets();
 
   // Rendering
+  draw();
+  render::engine->swapDisplayBuffers();
+}
+
+void mainLoopIterationEvenOdd(bool drawBlank) {
+  processLazyProperties();
+
+  render::engine->makeContextCurrent();
+  render::engine->updateWindowSize();
+
+  // Process UI events
+  render::engine->pollEvents();
+
+  // Housekeeping
+  purgeWidgets();
+
+  // Rendering
 
   double subFrameFPS = (double) options::maxFPS * 2;
-  std::chrono::duration<double> targetFrameTime(1.0 / 60.0);
+  std::chrono::duration<double> targetSubFrameTime(1.0 / subFrameFPS);
 
-  draw();
+  if (drawBlank) {
+    drawBlankFrame();
+  } else {
+    draw();
+  }
   
+  // Wait so that we hit our target subFrameFPS
   auto currTime = std::chrono::steady_clock::now();
   auto elapsedTime = currTime - lastMainLoopIterTime;
-  if (elapsedTime < targetFrameTime) {
-    std::this_thread::sleep_for(85 * (targetFrameTime - elapsedTime) / 100);
+  if (elapsedTime < targetSubFrameTime) {
+    std::this_thread::sleep_for(options::targetSleep * (targetSubFrameTime - elapsedTime) / 100);
   }
   
   render::engine->swapDisplayBuffers();
