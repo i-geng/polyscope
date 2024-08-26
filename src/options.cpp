@@ -26,7 +26,7 @@ bool hideWindowAfterShow = true;
 bool screenshotTransparency = true;
 std::string screenshotExtension = ".png";
 
-bool drawEvenFrame = false;
+bool drawEvenFrameFirst = false;
 
 // == Scene options
 

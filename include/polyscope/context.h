@@ -65,6 +65,7 @@ struct Context {
   bool doDefaultMouseInteraction = true;
   std::function<void()> userCallback = nullptr;
   std::map<std::string, std::map<std::string, std::unique_ptr<Light>>> lights;
+  bool isEvenFrame = true;
 
 
   // ======================================================

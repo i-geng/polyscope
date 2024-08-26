@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
@@ -58,6 +59,10 @@ void unshow();
 // in the user program's loop.
 void frameTick();
 
+// An alternate method to execute the Polyscope graphical loop. For even-odd frame drawing. Only frameTick()
+// or fullFrameTick() should be called in a user program's loop.
+void fullFrameTick();
+
 // Do shutdown work and de-initialize Polyscope
 void shutdown();
 
@@ -102,6 +107,8 @@ extern std::function<void()>& userCallback;
 
 // list of all lights in Polyscope
 extern std::map<std::string, std::map<std::string, std::unique_ptr<Light>>>& lights;
+
+extern bool& isEvenFrame;
 
 // representative center for all registered structures
 glm::vec3 center();
@@ -156,7 +163,7 @@ void refresh();
 
 // Main draw call, which handles all 3D rendering & UI management.
 // End users generally should not call this function. Consider requestRedraw() or screenshot().
-void draw(bool withUI = true, bool withContextCallback = true, bool flat_lighting = false);
+void draw(bool withUI = true, bool withContextCallback = true, bool flatLighting = false);
 
 // Request that the 3D scene be redrawn for the next frame. Should be called anytime something changes in the scene.
 void requestRedraw();

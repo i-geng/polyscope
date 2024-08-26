@@ -25,8 +25,10 @@ void SurfaceSixChannelColorQuantity::draw() {
   // TODO: choose even or odd program based on passed in boolean flag
   // don't read global state, because its possible it might have changed
   // in between sub-frame drawing calls
-  if (true) {
+  if (state::isEvenFrame) {
     program = programEven;
+  } else {
+    program = programOdd;
   }
 
   // Set uniforms

@@ -286,6 +286,34 @@ void frameTick() {
   frameTickStack--;
 }
 
+void fullFrameTick() {
+  // Grab the value NOW because it may change in between sub-frame draw calls
+  state::isEvenFrame = options::drawEvenFrameFirst;
+
+  // Same sanity checks as frameTick()
+  if (contextStack.size() > 1) {
+    exception("Do not call fullFrameTick() while show() is already looping the main loop.");
+  }
+  if (frameTickStack > 0) {
+    exception("You called fullFrameTick() while a previous call was in the midst of executing. Do not re-enter fullFrameTick() "
+              "or call it recursively.");
+  }
+  frameTickStack++;
+
+  // Make sure we're initialized and visible
+  checkInitialized();
+  render::engine->showWindow();
+
+  // Draw a sub-frame
+  mainLoopIteration();
+
+  // Draw the next sub-frame
+  state::isEvenFrame = !state::isEvenFrame;
+  mainLoopIteration();
+
+  frameTickStack--;
+}
+
 void requestRedraw() { redrawNextFrame = true; }
 bool redrawRequested() { return redrawNextFrame; }
 
@@ -893,8 +921,21 @@ void mainLoopIteration() {
   purgeWidgets();
 
   // Rendering
+
+  double subFrameFPS = (double) options::maxFPS * 2;
+  std::chrono::duration<double> targetFrameTime(1.0 / 60.0);
+
   draw();
+  
+  auto currTime = std::chrono::steady_clock::now();
+  auto elapsedTime = currTime - lastMainLoopIterTime;
+  if (elapsedTime < targetFrameTime) {
+    std::this_thread::sleep_for(85 * (targetFrameTime - elapsedTime) / 100);
+  }
+  
   render::engine->swapDisplayBuffers();
+
+  lastMainLoopIterTime = std::chrono::steady_clock::now();
 }
 
 void show(size_t forFrames) {

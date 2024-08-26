@@ -21,6 +21,7 @@ std::vector<WeakHandle<Widget>>& widgets = globalContext.widgets;
 bool& doDefaultMouseInteraction = globalContext.doDefaultMouseInteraction;
 std::function<void()>& userCallback = globalContext.userCallback;
 std::map<std::string, std::map<std::string, std::unique_ptr<Light>>>& lights = globalContext.lights;
+bool& isEvenFrame = globalContext.isEvenFrame;
 
 } // namespace state
 } // namespace polyscope
