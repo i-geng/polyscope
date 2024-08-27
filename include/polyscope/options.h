@@ -104,6 +104,9 @@ extern bool userGuiIsOnRightSide;
 // effect the user gui panel. (default: true)
 extern bool buildDefaultGuiPanels;
 
+// Build the debug gui panel for even-odd rendering. (default: false)
+extern bool buildEvenOddGuiPanel;
+
 // If false, Polyscope will not render the scene into the draw buffer
 // (this is useful if you are doing custom rendering and filling the draw buffer yourself)
 extern bool renderScene;

@@ -725,7 +725,7 @@ void buildStructureGui() {
   // Create window
   static bool showStructureWindow = true;
 
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + 3 * imguiStackMargin));
+  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
   ImGui::SetNextWindowSize(
       ImVec2(leftWindowsWidth, view::windowHeight - lastWindowHeightPolyscope - 3 * imguiStackMargin));
   ImGui::Begin("Structures", &showStructureWindow);
@@ -840,7 +840,7 @@ void buildEvenOddGui() {
   // Create window
   static bool showEvenOddWindow = true;
 
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + 2 * imguiStackMargin));
+  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
   ImGui::SetNextWindowSize(
       ImVec2(leftWindowsWidth, 0.));
 
@@ -891,7 +891,7 @@ void draw(bool withUI, bool withContextCallback, bool flatLighting) {
       if (options::buildGui) {
         if (options::buildDefaultGuiPanels) {
           buildPolyscopeGui();
-          buildEvenOddGui();
+          if (options::buildEvenOddGuiPanel) buildEvenOddGui();
           buildStructureGui();
           buildPickGui();
         }
