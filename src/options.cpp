@@ -28,6 +28,8 @@ bool screenshotTransparency = true;
 std::string screenshotExtension = ".png";
 
 bool drawEvenFrameFirst = true;
+bool blackOutEvenFrames = false;
+bool blackOutOddFrames = false;
 
 // == Scene options
 

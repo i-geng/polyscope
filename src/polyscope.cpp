@@ -53,10 +53,6 @@ float rightWindowsWidth = 500;
 
 auto lastMainLoopIterTime = std::chrono::steady_clock::now();
 
-// Some state for even-odd rendering
-bool blackOutEvenFrames = false;
-bool blackOutOddFrames = false;
-
 const std::string prefsFilename = ".polyscope.ini";
 
 void readPrefsFile() {
@@ -309,12 +305,12 @@ void fullFrameTick() {
   render::engine->showWindow();
 
   // Draw a sub-frame
-  bool drawBlank = state::isEvenFrame ? blackOutEvenFrames : blackOutOddFrames;
+  bool drawBlank = state::isEvenFrame ? options::blackOutEvenFrames : options::blackOutOddFrames;
   mainLoopIterationEvenOdd(drawBlank);
 
   // Draw the next sub-frame
   state::isEvenFrame = !state::isEvenFrame;
-  drawBlank = state::isEvenFrame ? blackOutEvenFrames : blackOutOddFrames;
+  drawBlank = state::isEvenFrame ? options::blackOutEvenFrames : options::blackOutOddFrames;
   mainLoopIterationEvenOdd(drawBlank);
 
   frameTickStack--;
@@ -847,10 +843,10 @@ void buildEvenOddGui() {
   ImGui::Begin("Even-Odd", &showEvenOddWindow);
 
   // Checkbox to black out even frames
-  ImGui::Checkbox("Black out even frames", &blackOutEvenFrames);
+  ImGui::Checkbox("Black out even frames", &options::blackOutEvenFrames);
 
   // Checkbox to black out odd frames
-  ImGui::Checkbox("Black out odd frames", &blackOutOddFrames);
+  ImGui::Checkbox("Black out odd frames", &options::blackOutOddFrames);
   
   //Checkbox to draw even frames first
   ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
