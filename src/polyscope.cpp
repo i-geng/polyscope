@@ -851,6 +851,14 @@ void buildEvenOddGui() {
   //Checkbox to draw even frames first
   ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
 
+  ImGui::PushItemWidth(30);
+  if (ImGui::InputInt("target sleep", &options::targetSleep, 0)) {
+    if (options::targetSleep < 0) {
+      options::targetSleep = 0;
+    }
+  }
+  ImGui::PopItemWidth();
+
   lastWindowHeightPolyscope += imguiStackMargin + ImGui::GetWindowHeight();
   leftWindowsWidth = ImGui::GetWindowWidth();
 

@@ -77,11 +77,6 @@ extern bool screenshotTransparency;     // controls whether screenshots taken by
 extern std::string screenshotExtension; // sets the extension used for automatically-numbered screenshots (e.g. by
                                         // clicking the GUI button)
 
-// Some options for even-odd rendering
-extern bool drawEvenFrameFirst; // for even-odd frame interleaving
-extern bool blackOutEvenFrames;
-extern bool blackOutOddFrames;
-
 // === Rendering parameters
 
 // SSAA scaling in pixel multiples
@@ -90,6 +85,11 @@ extern int ssaaFactor;
 // Transparency settings for the renderer
 extern TransparencyMode transparencyMode;
 extern int transparencyRenderPasses;
+
+// Some options for even-odd rendering
+extern bool drawEvenFrameFirst; // for even-odd frame interleaving
+extern bool blackOutEvenFrames;
+extern bool blackOutOddFrames;
 
 // === Advanced ImGui configuration
 
