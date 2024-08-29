@@ -87,7 +87,8 @@ extern TransparencyMode transparencyMode;
 extern int transparencyRenderPasses;
 
 // Some options for even-odd rendering
-extern bool drawEvenFrameFirst; // for even-odd frame interleaving
+extern bool renderEvenOddAbsoluteClock;
+extern bool drawEvenFrameFirst;
 extern bool blackOutEvenFrames;
 extern bool blackOutOddFrames;
 

@@ -27,6 +27,8 @@ bool hideWindowAfterShow = true;
 bool screenshotTransparency = true;
 std::string screenshotExtension = ".png";
 
+// == Even-Odd rendering options
+bool renderEvenOddAbsoluteClock = false;
 bool drawEvenFrameFirst = true;
 bool blackOutEvenFrames = false;
 bool blackOutOddFrames = false;
