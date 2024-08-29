@@ -52,6 +52,9 @@ float leftWindowsWidth = 305;
 float rightWindowsWidth = 500;
 
 auto lastMainLoopIterTime = std::chrono::steady_clock::now();
+auto frameZeroTime = std::chrono::high_resolution_clock::now();
+auto currTime = std::chrono::high_resolution_clock::now();
+int frameIndex = -1;
 
 const std::string prefsFilename = ".polyscope.ini";
 
@@ -216,20 +219,31 @@ void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
 
   // Re-enter main loop until the context has been popped
   size_t currentContextStackSize = contextStack.size();
+  frameZeroTime = std::chrono::high_resolution_clock::now();
+
   while (contextStack.size() >= currentContextStackSize) {
 
-    // The windowing system will let the main loop busy-loop on some platforms. Make sure that doesn't happen.
-    if (options::maxFPS != -1) {
-      auto currTime = std::chrono::steady_clock::now();
-      long microsecPerLoop = 1000000 / options::maxFPS;
-      microsecPerLoop = (95 * microsecPerLoop) / 100; // give a little slack so we actually hit target fps
-      while (std::chrono::duration_cast<std::chrono::microseconds>(currTime - lastMainLoopIterTime).count() <
-             microsecPerLoop) {
-        std::this_thread::yield();
-        currTime = std::chrono::steady_clock::now();
-      }
+    currTime = std::chrono::high_resolution_clock::now();
+    auto elapsedTime = std::chrono::duration<double>(currTime - frameZeroTime).count();
+    frameIndex = static_cast<int>(elapsedTime * options::maxFPS * 2);
+    if (frameIndex % 2 == 0) {
+      state::isEvenFrame = true;
+    } else {
+      state::isEvenFrame = false;
     }
-    lastMainLoopIterTime = std::chrono::steady_clock::now();
+    
+    // The windowing system will let the main loop busy-loop on some platforms. Make sure that doesn't happen.
+    // if (options::maxFPS != -1) {
+    //   auto currTime = std::chrono::steady_clock::now();
+    //   long microsecPerLoop = 1000000 / options::maxFPS;
+    //   microsecPerLoop = (95 * microsecPerLoop) / 100; // give a little slack so we actually hit target fps
+    //   while (std::chrono::duration_cast<std::chrono::microseconds>(currTime - lastMainLoopIterTime).count() <
+    //          microsecPerLoop) {
+    //     std::this_thread::yield();
+    //     currTime = std::chrono::steady_clock::now();
+    //   }
+    // }
+    // lastMainLoopIterTime = std::chrono::steady_clock::now();
 
     mainLoopIteration();
 
@@ -851,10 +865,10 @@ void buildEvenOddGui() {
   //Checkbox to draw even frames first
   ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
 
-  ImGui::PushItemWidth(30);
-  if (ImGui::InputInt("target sleep", &options::targetSleep, 0)) {
-    if (options::targetSleep < 0) {
-      options::targetSleep = 0;
+  ImGui::PushItemWidth(40);
+  if (ImGui::InputFloat("target sleep", &options::targetSleep, 0)) {
+    if (options::targetSleep < 0.0) {
+      options::targetSleep = 0.0;
     }
   }
   ImGui::PopItemWidth();
@@ -1029,6 +1043,14 @@ void mainLoopIteration() {
 
   // Rendering
   draw();
+
+  int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
+  std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100));
+  auto swapTime = currTime + delayTime;
+  while (std::chrono::high_resolution_clock::now() < swapTime) {
+    std::this_thread::yield(); 
+  }
+
   render::engine->swapDisplayBuffers();
 }
 

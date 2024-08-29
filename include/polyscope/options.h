@@ -32,7 +32,7 @@ extern bool errorsThrowExceptions;
 extern int maxFPS;
 
 // Adjust to hit target FPS (default: 85)
-extern int targetSleep;
+extern float targetSleep;
 
 // If enable or disable swap synchronization (limits render ray to display refresh rate). (default: true)
 // NOTE: some platforms may ignore the setting.
