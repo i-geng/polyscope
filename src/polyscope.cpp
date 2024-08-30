@@ -1133,15 +1133,22 @@ void mainLoopIterationAbsoluteClock(bool drawBlank) {
   }
 
   // Busy-loop until it is time to swap buffers
-  int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
-  std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100.0));
-  auto swapTime = frameStartTime + delayTime;
-  while (std::chrono::high_resolution_clock::now() < swapTime) {
-    std::this_thread::yield(); 
-  }
+  // int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
+  // std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100.0));
+  // auto swapTime = frameStartTime + delayTime;
+  // while (std::chrono::high_resolution_clock::now() < swapTime) {
+  //   std::this_thread::yield(); 
+  // }
 
   // Swap the buffers
-  render::engine->swapDisplayBuffers();
+  render::engine->swapDisplayBuffers(true);
+
+  // int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
+  // std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100.0));
+  // auto swapTime = frameStartTime + delayTime;
+  // while (std::chrono::high_resolution_clock::now() < swapTime) {
+  //   std::this_thread::yield(); 
+  // }
 }
 
 void mainLoopIterationEvenOdd(bool drawBlank) {
