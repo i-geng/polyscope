@@ -1587,7 +1587,7 @@ void MockGLEngine::initializeImGui() {
 
 void MockGLEngine::shutdownImGui() { ImGui::DestroyContext(); }
 
-void MockGLEngine::swapDisplayBuffers() {}
+void MockGLEngine::swapDisplayBuffers(bool callGlFinish) {}
 
 std::vector<unsigned char> MockGLEngine::readDisplayBuffer() {
   // Get buffer size

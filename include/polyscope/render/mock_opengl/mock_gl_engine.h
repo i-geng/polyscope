@@ -328,7 +328,7 @@ public:
   void initialize();
   void checkError(bool fatal = false) override;
 
-  void swapDisplayBuffers() override;
+  void swapDisplayBuffers(bool callGlFinish = false) override;
   std::vector<unsigned char> readDisplayBuffer() override;
 
   // Manage render state
