@@ -179,6 +179,7 @@ bool redrawRequested();
 // create other contexts and circumvent the main draw loop. This is used internally to implement messages, element
 // selections, etc.
 void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI = true);
+void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefaultUI = true);
 void popContext();
 
 // Get current ImGui context
@@ -203,6 +204,7 @@ void buildEvenOddGui(); // custom debug GUI for even-odd rendering
 void mainLoopIteration();
 // Same as mainLoopIteration(), but with finer control over the FPS
 void mainLoopIterationEvenOdd(bool drawBlank = false);
+void mainLoopIterationAbsoluteClock(bool drawBlank = false);
 void initializeImGUIContext();
 void drawStructures();
 void drawStructuresDelayed();
