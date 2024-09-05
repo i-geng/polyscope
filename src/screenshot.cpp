@@ -93,7 +93,12 @@ FILE* openVideoFile(std::string filename, int fps) {
                     + filename;
 
   // Open a pipe to FFmpeg
+#ifdef _WIN32
+  FILE* ffmpeg = _popen(cmd.c_str(), "w");
+#else
   FILE* ffmpeg = popen(cmd.c_str(), "w");
+#endif
+
   return ffmpeg;
 }
 
@@ -107,7 +112,11 @@ void closeVideoFile(FILE* fd) {
   if (!fd) {
     return;
   }
+#ifdef _WIN32
+  _pclose(fd);
+#else
   pclose(fd);
+#endif
 }
 
 TetraFileDescriptors* openTetraVideoFileRG1G2B(std::string cmd, int fps) {
@@ -115,7 +124,11 @@ TetraFileDescriptors* openTetraVideoFileRG1G2B(std::string cmd, int fps) {
   tfds->mode = SaveImageMode::RG1G2B;
 
   std::string cmd_rg1g2b = cmd + ".mp4";
+#ifdef _WIN32
+  tfds->files[0] = _popen(cmd_rg1g2b.c_str(), "w");
+#else
   tfds->files[0] = popen(cmd_rg1g2b.c_str(), "w");
+#endif
 
   return tfds;
 }
@@ -127,8 +140,13 @@ TetraFileDescriptors* openTetraVideoFileLMS_Q(std::string cmd, int fps) {
   std::string cmd_lms = cmd + "_LMS.mp4";
   std::string cmd_q = cmd + "_Q.mp4";
 
+#ifdef _WIN32
+  tfds->files[0] = _popen(cmd_lms.c_str(), "w");
+  tfds->files[1] = _popen(cmd_q.c_str(), "w");
+#else
   tfds->files[0] = popen(cmd_lms.c_str(), "w");
   tfds->files[1] = popen(cmd_q.c_str(), "w");
+#endif
 
   return tfds;
 }
@@ -139,7 +157,11 @@ TetraFileDescriptors* openTetraVideoFileFourGray(std::string cmd, int fps) {
 
   for (int i = 0; i < 4; i++) {
     std::string cmd_ch = cmd + "_" + std::to_string(i) + ".mp4";
+#ifdef _WIN32
+    tfds->files[i] = _popen(cmd_ch.c_str(), "w");
+#else
     tfds->files[i] = popen(cmd_ch.c_str(), "w");
+#endif
   }
 
   return tfds;
@@ -184,7 +206,11 @@ TetraFileDescriptors* openTetraVideoFile(std::string filename, int fps, SaveImag
 void closeTetraVideoFile(TetraFileDescriptors* tfds) {
   for (int i = 0; i < tfds->numFiles; i++) {
     if (tfds->files[i]) {
+#ifdef _WIN32
+      _pclose(tfds->files[i]);
+#else
       pclose(tfds->files[i]);
+#endif
       tfds->files[i] = nullptr;
     }
   }
