@@ -48,7 +48,7 @@ public:
 
   // High-level control
   void initialize();
-  void swapDisplayBuffers(bool callGlFinsh = false) override;
+  void swapDisplayBuffers() override;
 
   // === Windowing and framework things
 
