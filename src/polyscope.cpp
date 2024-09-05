@@ -1213,7 +1213,7 @@ void show(size_t forFrames) {
     render::engine->focusWindow();
   }
 
-  if (options::renderEvenOdd) {
+  if (options::renderEvenOddAbsoluteClock) {
     pushContextEvenOdd(checkFrames);
   } else {
     pushContext(checkFrames);
