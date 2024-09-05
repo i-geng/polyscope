@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
@@ -58,6 +59,10 @@ void unshow();
 // in the user program's loop.
 void frameTick();
 
+// An alternate method to execute the Polyscope graphical loop. For even-odd frame drawing. Only frameTick()
+// or fullFrameTick() should be called in a user program's loop.
+void fullFrameTick();
+
 // Do shutdown work and de-initialize Polyscope
 void shutdown();
 
@@ -102,6 +107,8 @@ extern std::function<void()>& userCallback;
 
 // list of all lights in Polyscope
 extern std::map<std::string, std::map<std::string, std::unique_ptr<Light>>>& lights;
+
+extern bool& isEvenFrame;
 
 // representative center for all registered structures
 glm::vec3 center();
@@ -156,7 +163,10 @@ void refresh();
 
 // Main draw call, which handles all 3D rendering & UI management.
 // End users generally should not call this function. Consider requestRedraw() or screenshot().
-void draw(bool withUI = true, bool withContextCallback = true, bool flat_lighting = false);
+void draw(bool withUI = true, bool withContextCallback = true, bool flatLighting = false);
+
+// Debug function for even-odd rendering
+void drawBlankFrame(bool withUI = true, bool withContextCallback = true);
 
 // Request that the 3D scene be redrawn for the next frame. Should be called anytime something changes in the scene.
 void requestRedraw();
@@ -169,6 +179,7 @@ bool redrawRequested();
 // create other contexts and circumvent the main draw loop. This is used internally to implement messages, element
 // selections, etc.
 void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI = true);
+void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefaultUI = true);
 void popContext();
 
 // Get current ImGui context
@@ -183,6 +194,7 @@ void buildPolyscopeGui();
 void buildStructureGui();
 void buildPickGui();
 void buildUserGuiAndInvokeCallback();
+void buildEvenOddGui(); // custom debug GUI for even-odd rendering
 
 
 // === Utility
@@ -190,6 +202,9 @@ void buildUserGuiAndInvokeCallback();
 // Execute one iteration of the main loop
 // Exposed so that some weird flow (eg, errors) can re-enter the main loop when appropriate. Be careful!
 void mainLoopIteration();
+// Same as mainLoopIteration(), but with finer control over the FPS
+void mainLoopIterationEvenOdd(bool drawBlank = false);
+void mainLoopIterationAbsoluteClock(bool drawBlank = false);
 void initializeImGUIContext();
 void drawStructures();
 void drawStructuresDelayed();

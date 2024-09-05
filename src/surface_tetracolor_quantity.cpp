@@ -1,4 +1,3 @@
-
 #include "polyscope/surface_tetracolor_quantity.h"
 
 #include "polyscope/polyscope.h"

@@ -437,6 +437,8 @@ void VolumeMesh::draw() {
     program->setUniform("u_baseColor1", getColor());
     program->setUniform("u_baseColor2", getInteriorColor());
     render::engine->setMaterialUniforms(*program, getMaterial());
+    render::engine->setCameraUniforms(*program);
+    render::engine->setLightUniforms(*program);
 
     program->draw();
   }
@@ -483,6 +485,8 @@ void VolumeMesh::drawPick() {
   // Set uniforms
   setVolumeMeshUniforms(*pickProgram);
   setStructureUniforms(*pickProgram);
+  render::engine->setCameraUniforms(*pickProgram);
+  render::engine->setLightUniforms(*pickProgram);
 
   pickProgram->draw();
 }

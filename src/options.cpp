@@ -12,6 +12,7 @@ std::string printPrefix = "[polyscope] ";
 bool errorsThrowExceptions = false;
 bool debugDrawPickBuffer = false;
 int maxFPS = 60;
+float targetSleep = 85.0;
 bool enableVSync = true;
 bool usePrefsFile = true;
 bool initializeWithDefaultStructures = true;
@@ -25,6 +26,11 @@ bool hideWindowAfterShow = true;
 
 bool screenshotTransparency = true;
 std::string screenshotExtension = ".png";
+
+bool renderEvenOddAbsoluteClock = false;
+bool drawEvenFrameFirst = true;
+bool blackOutEvenFrames = false;
+bool blackOutOddFrames = false;
 
 // == Scene options
 
@@ -48,6 +54,7 @@ int transparencyRenderPasses = 8;
 bool buildGui = true;
 bool userGuiIsOnRightSide = true;
 bool buildDefaultGuiPanels = true;
+bool buildEvenOddGuiPanel = false;
 bool renderScene = true;
 bool openImGuiWindowForUserCallback = true;
 std::function<void()> configureImGuiStyleCallback = configureImGuiStyle;

@@ -126,12 +126,12 @@ void processFileOBJ(std::string filename) {
 
 
   // Add a tetracolor to each face
-  std::vector<glm::vec4> faceTetracolors(faceIndices.size());
-  for (size_t i = 0; i < faceIndices.size(); i++) {
-    faceTetracolors[i] = glm::vec4(0.7, 0.3, 0.4, 0.8);
-  }
-  psMesh->addFaceTetracolorQuantity("face tetracolor", faceTetracolors);
-  psMesh->setMaterial("flat_tetra");
+  // std::vector<glm::vec4> faceTetracolors(faceIndices.size());
+  // for (size_t i = 0; i < faceIndices.size(); i++) {
+  //   faceTetracolors[i] = glm::vec4(0.7, 0.3, 0.4, 0.8);
+  // }
+  // psMesh->addFaceTetracolorQuantity("face tetracolor", faceTetracolors);
+  // psMesh->setMaterial("flat_tetra");
 
   // Add random color to each vertex
   // std::vector<glm::vec3> vertexColors(vertexPositions.size());
@@ -151,6 +151,16 @@ void processFileOBJ(std::string filename) {
   //   faceColors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit());
   // }
   // psMesh->addFaceColorQuantity("random colors", faceColors);
+  
+  std::vector<glm::vec3> colorsEven(faceIndices.size());
+  std::vector<glm::vec3> colorsOdd(faceIndices.size());
+  for (size_t i = 0; i < faceIndices.size(); i++) {
+    colorsEven[i] = glm::vec3(1.0, 0.0, 0.5);
+    colorsOdd[i] = glm::vec3(0.0, 0.5, 1.0);
+  }
+  psMesh->setMaterial("flat");
+  psMesh->addFaceSixChannelColorQuantity("purple", colorsEven, colorsOdd);
+
 
   return;
 
@@ -895,9 +905,10 @@ int main(int argc, char** argv) {
   // polyscope::options::autocenterStructures = true;
   // polyscope::view::windowWidth = 600;
   // polyscope::view::windowHeight = 800;
-  // polyscope::options::maxFPS = -1;
+  polyscope::options::maxFPS = 30;
   polyscope::options::verbosity = 100;
   polyscope::options::enableRenderErrorChecks = true;
+  polyscope::options::alwaysRedraw = true;
 
   // Initialize polyscope
   polyscope::init();
@@ -992,7 +1003,7 @@ int main(int argc, char** argv) {
   polyscope::state::userCallback = callback;
 
   // Show the gui
-  polyscope::show();
+  // polyscope::show();
 
 
   // rotate_teapot();
@@ -1003,6 +1014,10 @@ int main(int argc, char** argv) {
   //   rotateTeapot();
   //   polyscope::frameTick();
   // }
+
+  while (true) {
+    polyscope::fullFrameTick();
+  }
 
   std::cout << "!!!! shutdown time" << std::endl;
 

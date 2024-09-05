@@ -24,6 +24,8 @@ void VolumeMeshColorQuantity::draw() {
   parent.setStructureUniforms(*program);
   parent.setVolumeMeshUniforms(*program);
   render::engine->setMaterialUniforms(*program, parent.getMaterial());
+  render::engine->setCameraUniforms(*program);
+  render::engine->setLightUniforms(*program);
 
   program->draw();
 }

@@ -71,6 +71,12 @@ void CameraView::draw() {
   render::engine->setMaterialUniforms(*nodeProgram, material);
   render::engine->setMaterialUniforms(*edgeProgram, material);
 
+  render::engine->setCameraUniforms(*nodeProgram);
+  render::engine->setCameraUniforms(*edgeProgram);
+
+  render::engine->setLightUniforms(*nodeProgram);
+  render::engine->setLightUniforms(*edgeProgram);
+
   // Draw the camera view wireframe
   nodeProgram->draw();
   edgeProgram->draw();
@@ -118,6 +124,8 @@ void CameraView::drawPick() {
 
   // Set uniforms
   setStructureUniforms(*pickFrameProgram);
+  render::engine->setCameraUniforms(*pickFrameProgram);
+  render::engine->setLightUniforms(*pickFrameProgram);
 
   pickFrameProgram->draw();
 }

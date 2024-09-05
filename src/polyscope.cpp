@@ -52,6 +52,11 @@ float leftWindowsWidth = 305;
 float rightWindowsWidth = 500;
 
 auto lastMainLoopIterTime = std::chrono::steady_clock::now();
+// auto frameZeroTime = std::chrono::high_resolution_clock::now();
+// auto frameStartTime = std::chrono::high_resolution_clock::now();
+auto frameZeroTime = std::chrono::steady_clock::now();
+auto frameStartTime = std::chrono::steady_clock::now();
+
 
 const std::string prefsFilename = ".polyscope.ini";
 
@@ -217,7 +222,6 @@ void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
   // Re-enter main loop until the context has been popped
   size_t currentContextStackSize = contextStack.size();
   while (contextStack.size() >= currentContextStackSize) {
-
     // The windowing system will let the main loop busy-loop on some platforms. Make sure that doesn't happen.
     if (options::maxFPS != -1) {
       auto currTime = std::chrono::steady_clock::now();
@@ -253,6 +257,78 @@ void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
   }
 }
 
+void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefaultUI) {
+
+  // Create a new context and push it on to the stack
+  ImGuiContext* newContext = ImGui::CreateContext(render::engine->getImGuiGlobalFontAtlas());
+  ImGuiIO& oldIO = ImGui::GetIO(); // used to GLFW + OpenGL data to the new IO object
+#ifdef IMGUI_HAS_DOCK
+  ImGuiPlatformIO& oldPlatformIO = ImGui::GetPlatformIO();
+#endif
+  ImGui::SetCurrentContext(newContext);
+#ifdef IMGUI_HAS_DOCK
+  // Propagate GLFW window handle to new context
+  ImGui::GetMainViewport()->PlatformHandle = oldPlatformIO.Viewports[0]->PlatformHandle;
+#endif
+  ImGui::GetIO().BackendPlatformUserData = oldIO.BackendPlatformUserData;
+  ImGui::GetIO().BackendRendererUserData = oldIO.BackendRendererUserData;
+
+  if (options::configureImGuiStyleCallback) {
+    options::configureImGuiStyleCallback();
+  }
+
+  contextStack.push_back(ContextEntry{newContext, callbackFunction, drawDefaultUI});
+
+  if (contextStack.size() > 50) {
+    // Catch bugs with nested show()
+    exception("Uh oh, polyscope::show() was recusively MANY times (depth > 50), this is probably a bug. Perhaps "
+              "you are accidentally calling show every time polyscope::userCallback executes?");
+  };
+
+  // Make sure the window is visible
+  render::engine->showWindow();
+
+  // Re-enter main loop until the context has been popped
+  size_t currentContextStackSize = contextStack.size();
+  // frameZeroTime = std::chrono::high_resolution_clock::now();
+  frameZeroTime = std::chrono::steady_clock::now();
+
+  while (contextStack.size() >= currentContextStackSize) {
+    // frameStartTime = std::chrono::high_resolution_clock::now();
+    frameStartTime = std::chrono::steady_clock::now();
+    auto elapsedTime = std::chrono::duration<double>(frameStartTime - frameZeroTime).count();
+    int frameIndex = static_cast<int>(elapsedTime * options::maxFPS * 2);
+    // std::cout << frameIndex << std::endl;
+
+    if (frameIndex % 2 == 0) {
+      state::isEvenFrame = true;
+      // std::cout << "even";
+    } else {
+      state::isEvenFrame = false;
+      // std::cout << "odd" << std::endl;
+    }
+    
+    mainLoopIterationAbsoluteClock();
+
+    // auto-exit if the window is closed
+    if (render::engine->windowRequestsClose()) {
+      popContext();
+    }
+  }
+
+  // Workaround overzealous ImGui assertion before destroying any inner context
+  // https://github.com/ocornut/imgui/pull/7175
+  ImGui::SetCurrentContext(newContext);
+  ImGui::GetIO().BackendPlatformUserData = nullptr;
+  ImGui::GetIO().BackendRendererUserData = nullptr;
+
+  ImGui::DestroyContext(newContext);
+
+  // Restore the previous context, if there was one
+  if (!contextStack.empty()) {
+    ImGui::SetCurrentContext(contextStack.back().context);
+  }
+}
 
 void popContext() {
   if (contextStack.empty()) {
@@ -282,6 +358,36 @@ void frameTick() {
 
   // All-imporant main loop iteration
   mainLoopIteration();
+
+  frameTickStack--;
+}
+
+void fullFrameTick() {
+  // Grab the value NOW because it may change in between sub-frame draw calls
+  state::isEvenFrame = options::drawEvenFrameFirst;
+
+  // Same sanity checks as frameTick()
+  if (contextStack.size() > 1) {
+    exception("Do not call fullFrameTick() while show() is already looping the main loop.");
+  }
+  if (frameTickStack > 0) {
+    exception("You called fullFrameTick() while a previous call was in the midst of executing. Do not re-enter fullFrameTick() "
+              "or call it recursively.");
+  }
+  frameTickStack++;
+
+  // Make sure we're initialized and visible
+  checkInitialized();
+  render::engine->showWindow();
+
+  // Draw a sub-frame
+  bool drawBlank = state::isEvenFrame ? options::blackOutEvenFrames : options::blackOutOddFrames;
+  mainLoopIterationEvenOdd(drawBlank);
+
+  // Draw the next sub-frame
+  state::isEvenFrame = !state::isEvenFrame;
+  drawBlank = state::isEvenFrame ? options::blackOutEvenFrames : options::blackOutOddFrames;
+  mainLoopIterationEvenOdd(drawBlank);
 
   frameTickStack--;
 }
@@ -691,7 +797,7 @@ void buildStructureGui() {
   // Create window
   static bool showStructureWindow = true;
 
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + 2 * imguiStackMargin));
+  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
   ImGui::SetNextWindowSize(
       ImVec2(leftWindowsWidth, view::windowHeight - lastWindowHeightPolyscope - 3 * imguiStackMargin));
   ImGui::Begin("Structures", &showStructureWindow);
@@ -802,6 +908,39 @@ void buildUserGuiAndInvokeCallback() {
   }
 }
 
+void buildEvenOddGui() {
+  // Create window
+  static bool showEvenOddWindow = true;
+
+  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
+  ImGui::SetNextWindowSize(
+      ImVec2(leftWindowsWidth, 0.));
+
+  ImGui::Begin("Even-Odd", &showEvenOddWindow);
+
+  // Checkbox to black out even frames
+  ImGui::Checkbox("Black out even frames", &options::blackOutEvenFrames);
+
+  // Checkbox to black out odd frames
+  ImGui::Checkbox("Black out odd frames", &options::blackOutOddFrames);
+  
+  //Checkbox to draw even frames first
+  ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
+
+  ImGui::PushItemWidth(40);
+  if (ImGui::InputFloat("target sleep", &options::targetSleep, 0)) {
+    if (options::targetSleep < 0.0) {
+      options::targetSleep = 0.0;
+    }
+  }
+  ImGui::PopItemWidth();
+
+  lastWindowHeightPolyscope += imguiStackMargin + ImGui::GetWindowHeight();
+  leftWindowsWidth = ImGui::GetWindowWidth();
+
+  ImGui::End();
+}
+
 void draw(bool withUI, bool withContextCallback, bool flatLighting) {
   processLazyProperties();
 
@@ -832,6 +971,7 @@ void draw(bool withUI, bool withContextCallback, bool flatLighting) {
       if (options::buildGui) {
         if (options::buildDefaultGuiPanels) {
           buildPolyscopeGui();
+          if (options::buildEvenOddGuiPanel) buildEvenOddGui();
           buildStructureGui();
           buildPickGui();
         }
@@ -879,6 +1019,77 @@ void draw(bool withUI, bool withContextCallback, bool flatLighting) {
 }
 
 
+void drawBlankFrame(bool withUI, bool withContextCallback) {
+  processLazyProperties();
+
+  // Update buffer and context
+  render::engine->makeContextCurrent();
+  render::engine->bindDisplay();
+  render::engine->setBackgroundColor({view::bgColor[0], view::bgColor[1], view::bgColor[2]});
+  render::engine->setBackgroundAlpha(0);
+  render::engine->clearDisplay();
+
+  if (withUI) {
+    render::engine->ImGuiNewFrame();
+
+    processInputEvents();
+    view::updateFlight();
+    showDelayedWarnings();
+  }
+
+  // Build the GUI components
+  if (withUI) {
+    if (contextStack.back().drawDefaultUI) {
+
+      // Note: It is important to build the user GUI first, because it is likely that callbacks there will modify
+      // polyscope data. If we do these modifications happen later in the render cycle, they might invalidate data which
+      // is necessary when ImGui::Render() happens below.
+      buildUserGuiAndInvokeCallback();
+
+      if (options::buildGui) {
+        if (options::buildDefaultGuiPanels) {
+          buildPolyscopeGui();
+          buildEvenOddGui();
+          buildStructureGui();
+          buildPickGui();
+        }
+
+        for (WeakHandle<Widget> wHandle : state::widgets) {
+          if (wHandle.isValid()) {
+            Widget& w = wHandle.get();
+            w.buildGUI();
+          }
+        }
+      }
+    }
+  }
+
+  // Execute the context callback, if there is one.
+  // This callback is a Polyscope implementation detail, which is distinct from the userCallback (which gets called
+  // above)
+  if (withContextCallback && contextStack.back().callback) {
+    (contextStack.back().callback)();
+  }
+
+  processLazyProperties();
+
+  // Draw the GUI
+  if (withUI) {
+    // render widgets
+    render::engine->bindDisplay();
+    for (WeakHandle<Widget> wHandle : state::widgets) {
+      if (wHandle.isValid()) {
+        Widget& w = wHandle.get();
+        w.draw();
+      }
+    }
+
+    render::engine->bindDisplay();
+    render::engine->ImGuiRender();
+  }
+}
+
+
 void mainLoopIteration() {
 
   processLazyProperties();
@@ -894,7 +1105,90 @@ void mainLoopIteration() {
 
   // Rendering
   draw();
+
   render::engine->swapDisplayBuffers();
+}
+
+void mainLoopIterationAbsoluteClock(bool drawBlank) {
+
+  processLazyProperties();
+
+  render::engine->makeContextCurrent();
+  render::engine->updateWindowSize();
+
+  // Process UI events
+  render::engine->pollEvents();
+
+  // Housekeeping
+  purgeWidgets();
+
+  // Rendering
+  if (drawBlank) {
+    drawBlankFrame();
+  } else {
+    draw();
+  }
+
+  // Busy-loop until it is time to swap buffers
+  // int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
+  // std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100.0));
+  // auto swapTime = frameStartTime + delayTime;
+  // while (std::chrono::high_resolution_clock::now() < swapTime) {
+  //   std::this_thread::yield(); 
+  // }
+
+  // Swap the buffers
+  render::engine->swapDisplayBuffers();
+
+  // int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
+  // std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100.0));
+  // auto swapTime = frameStartTime + delayTime;
+  // while (std::chrono::high_resolution_clock::now() < swapTime) {
+  //   std::this_thread::yield(); 
+  // }
+
+  // Yield method
+  int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
+  std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100));
+  auto swapTime = frameStartTime + delayTime;
+  while (std::chrono::steady_clock::now() < swapTime) {
+    std::this_thread::yield(); 
+  }
+}
+
+void mainLoopIterationEvenOdd(bool drawBlank) {
+  processLazyProperties();
+
+  render::engine->makeContextCurrent();
+  render::engine->updateWindowSize();
+
+  // Process UI events
+  render::engine->pollEvents();
+
+  // Housekeeping
+  purgeWidgets();
+
+  // Rendering
+
+  double subFrameFPS = (double) options::maxFPS * 2;
+  std::chrono::duration<double> targetSubFrameTime(1.0 / subFrameFPS);
+
+  if (drawBlank) {
+    drawBlankFrame();
+  } else {
+    draw();
+  }
+  
+  // Wait so that we hit our target subFrameFPS
+  auto currTime = std::chrono::steady_clock::now();
+  auto elapsedTime = currTime - lastMainLoopIterTime;
+  if (elapsedTime < targetSubFrameTime) {
+    std::this_thread::sleep_for(options::targetSleep * (targetSubFrameTime - elapsedTime) / 100);
+  }
+  
+  render::engine->swapDisplayBuffers();
+
+  lastMainLoopIterTime = std::chrono::steady_clock::now();
 }
 
 void show(size_t forFrames) {
@@ -919,7 +1213,11 @@ void show(size_t forFrames) {
     render::engine->focusWindow();
   }
 
-  pushContext(checkFrames);
+  if (options::renderEvenOddAbsoluteClock) {
+    pushContextEvenOdd(checkFrames);
+  } else {
+    pushContext(checkFrames);
+  }
 
   if (options::usePrefsFile) {
     writePrefsFile();

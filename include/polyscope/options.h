@@ -31,6 +31,9 @@ extern bool errorsThrowExceptions;
 // Don't let the main loop run at more than this speed. (-1 disables) (default: 60)
 extern int maxFPS;
 
+// Adjust to hit target FPS (default: 85)
+extern float targetSleep;
+
 // If enable or disable swap synchronization (limits render ray to display refresh rate). (default: true)
 // NOTE: some platforms may ignore the setting.
 extern bool enableVSync;
@@ -83,6 +86,12 @@ extern int ssaaFactor;
 extern TransparencyMode transparencyMode;
 extern int transparencyRenderPasses;
 
+// Some options for even-odd rendering
+extern bool renderEvenOddAbsoluteClock;
+extern bool drawEvenFrameFirst; // for even-odd frame interleaving
+extern bool blackOutEvenFrames;
+extern bool blackOutOddFrames;
+
 // === Advanced ImGui configuration
 
 // If false, Polyscope will not create any ImGui UIs at all, but will still set up ImGui and invoke its render steps
@@ -98,6 +107,9 @@ extern bool userGuiIsOnRightSide;
 // The difference between this vs. buildGui is whether or not the user gui panel is drawn, this setting does _not_
 // effect the user gui panel. (default: true)
 extern bool buildDefaultGuiPanels;
+
+// Build the debug gui panel for even-odd rendering. (default: false)
+extern bool buildEvenOddGuiPanel;
 
 // If false, Polyscope will not render the scene into the draw buffer
 // (this is useful if you are doing custom rendering and filling the draw buffer yourself)

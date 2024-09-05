@@ -763,6 +763,8 @@ void SurfaceMesh::drawPick() {
 
   // Set uniforms
   setStructureUniforms(*pickProgram);
+  render::engine->setCameraUniforms(*pickProgram);
+  render::engine->setLightUniforms(*pickProgram);
 
   pickProgram->draw();
 
@@ -1522,6 +1524,15 @@ SurfaceVertexTetracolorQuantity* SurfaceMesh::addVertexTetracolorQuantityImpl(st
   return q;
 }
 
+SurfaceVertexSixChannelColorQuantity* SurfaceMesh::addVertexSixChannelColorQuantityImpl(std::string name,
+                                                                                        const std::vector<glm::vec3>& colorsEven,
+                                                                                        const std::vector<glm::vec3>& colorsOdd) {
+  checkForQuantityWithNameAndDeleteOrError(name);
+  SurfaceVertexSixChannelColorQuantity* q = new SurfaceVertexSixChannelColorQuantity(name, *this, colorsEven, colorsOdd);
+  addQuantity(q);
+  return q;
+}
+
 SurfaceFaceColorQuantity* SurfaceMesh::addFaceColorQuantityImpl(std::string name,
                                                                 const std::vector<glm::vec3>& colors) {
   checkForQuantityWithNameAndDeleteOrError(name);
@@ -1534,6 +1545,15 @@ SurfaceFaceTetracolorQuantity* SurfaceMesh::addFaceTetracolorQuantityImpl(std::s
                                                                           const std::vector<glm::vec4>& tetracolors) {
   checkForQuantityWithNameAndDeleteOrError(name);
   SurfaceFaceTetracolorQuantity* q = new SurfaceFaceTetracolorQuantity(name, *this, tetracolors);
+  addQuantity(q);
+  return q;
+}
+
+SurfaceFaceSixChannelColorQuantity* SurfaceMesh::addFaceSixChannelColorQuantityImpl(std::string name,
+                                                                                    const std::vector<glm::vec3>& colorsEven,
+                                                                                    const std::vector<glm::vec3>& colorsOdd) {
+  checkForQuantityWithNameAndDeleteOrError(name);
+  SurfaceFaceSixChannelColorQuantity* q = new SurfaceFaceSixChannelColorQuantity(name, *this, colorsEven, colorsOdd);
   addQuantity(q);
   return q;
 }

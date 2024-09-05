@@ -231,6 +231,13 @@ SurfaceVertexTetracolorQuantity* SurfaceMesh::addVertexTetracolorQuantity(std::s
   return addVertexTetracolorQuantityImpl(name, standardizeVectorArray<glm::vec4, 4>(tetracolors));
 }
 
+template <class T>
+SurfaceVertexSixChannelColorQuantity* SurfaceMesh::addVertexSixChannelColorQuantity(std::string name,
+                                                                                    const T& colorsEven,
+                                                                                    const T& colorsOdd) {
+  validateSize<T>(colorsEven, vertexDataSize, "vertex six channel color quantity " + name);
+  return addVertexSixChannelColorQuantityImpl(name, standardizeVectorArray<glm::vec3, 3>(colorsEven), standardizeVectorArray<glm::vec3, 3>(colorsOdd));
+}
 
 template <class T>
 SurfaceFaceColorQuantity* SurfaceMesh::addFaceColorQuantity(std::string name, const T& colors) {
@@ -239,9 +246,19 @@ SurfaceFaceColorQuantity* SurfaceMesh::addFaceColorQuantity(std::string name, co
 }
 
 template <class T>
-SurfaceFaceTetracolorQuantity* SurfaceMesh::addFaceTetracolorQuantity(std::string name, const T& tetracolors) {
+SurfaceFaceTetracolorQuantity*
+SurfaceMesh::addFaceTetracolorQuantity(std::string name, const T& tetracolors) {
   validateSize<T>(tetracolors, faceDataSize, "face tetracolor quantity " + name);
   return addFaceTetracolorQuantityImpl(name, standardizeVectorArray<glm::vec4, 4>(tetracolors));
+}
+
+template <class T>
+SurfaceFaceSixChannelColorQuantity*
+SurfaceMesh::addFaceSixChannelColorQuantity(std::string name,
+                                            const T& colorsEven,
+                                            const T& colorsOdd) {
+  validateSize<T>(colorsEven, faceDataSize, "face six channel color quantity " + name);
+  return addFaceSixChannelColorQuantityImpl(name, standardizeVectorArray<glm::vec3, 3>(colorsEven), standardizeVectorArray<glm::vec3, 3>(colorsOdd));
 }
 
 template <class T>

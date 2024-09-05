@@ -23,6 +23,8 @@ void SurfaceColorQuantity::draw() {
   parent.setStructureUniforms(*program);
   parent.setSurfaceMeshUniforms(*program);
   render::engine->setMaterialUniforms(*program, parent.getMaterial());
+  render::engine->setCameraUniforms(*program);
+  render::engine->setLightUniforms(*program);
 
   program->draw();
 }

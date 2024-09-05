@@ -103,6 +103,7 @@ R"(
           
            // Shading
            vec3 shadeNormal = a_vertexNormalToFrag;
+           // shadeNormal.x += 1e-8 * u_camWorldPos.x; // silly hack to stop u_camWorldPos from getting optimized out
            ${ GENERATE_SHADE_VALUE }$
            ${ GENERATE_SHADE_COLOR }$
            
