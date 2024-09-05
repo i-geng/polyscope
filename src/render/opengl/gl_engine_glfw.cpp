@@ -139,11 +139,9 @@ void GLEngineGLFW::ImGuiRender() {
 }
 
 
-void GLEngineGLFW::swapDisplayBuffers(bool callGlFinish) {
+void GLEngineGLFW::swapDisplayBuffers() {
   bindDisplay();
   glfwSwapBuffers(mainWindow);
-  
-  if (callGlFinish) glFinish();
 }
 
 

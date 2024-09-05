@@ -465,7 +465,7 @@ public:
 
   virtual void clearDisplay();
   virtual void bindDisplay();
-  virtual void swapDisplayBuffers(bool callGlFinish = false) = 0;
+  virtual void swapDisplayBuffers() = 0;
   void pushBindFramebufferForRendering(
       FrameBuffer& f); // push the existing rendering framebuffer on to a stack and bind to f for rendering
   void popBindFramebufferForRendering(); // pop the old framebuffer off the stack and bind to it
