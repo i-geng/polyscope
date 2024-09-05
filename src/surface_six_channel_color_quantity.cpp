@@ -35,6 +35,8 @@ void SurfaceSixChannelColorQuantity::draw() {
   parent.setStructureUniforms(*program);
   parent.setSurfaceMeshUniforms(*program);
   render::engine->setMaterialUniforms(*program, "flat");
+  render::engine->setCameraUniforms(*program);
+  render::engine->setLightUniforms(*program);
   
   program->draw();
 }

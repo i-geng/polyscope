@@ -763,6 +763,8 @@ void SurfaceMesh::drawPick() {
 
   // Set uniforms
   setStructureUniforms(*pickProgram);
+  render::engine->setCameraUniforms(*pickProgram);
+  render::engine->setLightUniforms(*pickProgram);
 
   pickProgram->draw();
 

@@ -302,10 +302,10 @@ void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefault
 
     if (frameIndex % 2 == 0) {
       state::isEvenFrame = true;
-      std::cout << "even";
+      // std::cout << "even";
     } else {
       state::isEvenFrame = false;
-      std::cout << "odd" << std::endl;
+      // std::cout << "odd" << std::endl;
     }
     
     mainLoopIterationAbsoluteClock();

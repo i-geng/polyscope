@@ -25,6 +25,8 @@ void VolumeMeshScalarQuantity::draw() {
   parent.setVolumeMeshUniforms(*program);
   setScalarUniforms(*program);
   render::engine->setMaterialUniforms(*program, parent.getMaterial());
+  render::engine->setCameraUniforms(*program);
+  render::engine->setLightUniforms(*program);
 
   program->draw();
 }
@@ -137,6 +139,8 @@ void VolumeMeshVertexScalarQuantity::draw() {
   parent.setVolumeMeshUniforms(*programToDraw);
   setScalarUniforms(*programToDraw);
   render::engine->setMaterialUniforms(*programToDraw, parent.getMaterial());
+  render::engine->setCameraUniforms(*programToDraw);
+  render::engine->setLightUniforms(*programToDraw);
 
   programToDraw->draw();
 }
