@@ -56,7 +56,14 @@ auto lastMainLoopIterTime = std::chrono::steady_clock::now();
 // auto frameStartTime = std::chrono::high_resolution_clock::now();
 auto frameZeroTime = std::chrono::steady_clock::now();
 auto frameStartTime = std::chrono::steady_clock::now();
-
+int frameIndex = -1;
+// Open file for timing data
+// std::ofstream csvFile("swapBuffers_mirror_timing.csv");
+auto startProfiling = std::chrono::steady_clock::now();
+auto endProfiling = std::chrono::steady_clock::now();
+std::ofstream csvFile("swapBuffers_timing.csv");
+// std::ofstream csvFile("frame_timing.csv");
+// std::ofstream csvFile("draw_timing.csv");
 
 const std::string prefsFilename = ".polyscope.ini";
 
@@ -290,25 +297,32 @@ void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefault
 
   // Re-enter main loop until the context has been popped
   size_t currentContextStackSize = contextStack.size();
-  // frameZeroTime = std::chrono::high_resolution_clock::now();
   frameZeroTime = std::chrono::steady_clock::now();
 
   while (contextStack.size() >= currentContextStackSize) {
-    // frameStartTime = std::chrono::high_resolution_clock::now();
     frameStartTime = std::chrono::steady_clock::now();
     auto elapsedTime = std::chrono::duration<double>(frameStartTime - frameZeroTime).count();
-    int frameIndex = static_cast<int>(elapsedTime * options::maxFPS * 2);
-    // std::cout << frameIndex << std::endl;
+    frameIndex = static_cast<int>(elapsedTime * options::maxFPS * 2);
 
     if (frameIndex % 2 == 0) {
       state::isEvenFrame = true;
-      // std::cout << "even";
     } else {
       state::isEvenFrame = false;
-      // std::cout << "odd" << std::endl;
     }
     
-    mainLoopIterationAbsoluteClock();
+    if (!options::drawEvenFrameFirst) {
+      state::isEvenFrame = !state::isEvenFrame;
+    }
+
+    // Debug option to black out frames
+    bool drawBlank = false;
+    if (state::isEvenFrame && options::blackOutEvenFrames) {
+      drawBlank = true;
+    } else if (!state::isEvenFrame && options::blackOutOddFrames) {
+      drawBlank = true;
+    }
+    
+    mainLoopIterationAbsoluteClock(drawBlank);
 
     // auto-exit if the window is closed
     if (render::engine->windowRequestsClose()) {
@@ -1111,6 +1125,8 @@ void mainLoopIteration() {
 
 void mainLoopIterationAbsoluteClock(bool drawBlank) {
 
+  // auto start = std::chrono::high_resolution_clock::now();
+
   processLazyProperties();
 
   render::engine->makeContextCurrent();
@@ -1122,6 +1138,7 @@ void mainLoopIterationAbsoluteClock(bool drawBlank) {
   // Housekeeping
   purgeWidgets();
 
+
   // Rendering
   if (drawBlank) {
     drawBlankFrame();
@@ -1129,25 +1146,10 @@ void mainLoopIterationAbsoluteClock(bool drawBlank) {
     draw();
   }
 
-  // Busy-loop until it is time to swap buffers
-  // int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
-  // std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100.0));
-  // auto swapTime = frameStartTime + delayTime;
-  // while (std::chrono::high_resolution_clock::now() < swapTime) {
-  //   std::this_thread::yield(); 
-  // }
-
   // Swap the buffers
   render::engine->swapDisplayBuffers();
 
-  // int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
-  // std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100.0));
-  // auto swapTime = frameStartTime + delayTime;
-  // while (std::chrono::high_resolution_clock::now() < swapTime) {
-  //   std::this_thread::yield(); 
-  // }
-
-  // Yield method
+  // Yield method to hit target FPS
   int frameTimeMicroseconds = static_cast<int>(1000000 / (2 * options::maxFPS));
   std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100));
   auto swapTime = frameStartTime + delayTime;
@@ -1193,6 +1195,8 @@ void mainLoopIterationEvenOdd(bool drawBlank) {
 
 void show(size_t forFrames) {
 
+  csvFile << "Frame,Duration(ms)\n";
+
   if (!state::initialized) {
     exception("must initialize Polyscope with polyscope::init() before calling polyscope::show().");
   }
@@ -1215,6 +1219,7 @@ void show(size_t forFrames) {
 
   if (options::renderEvenOddAbsoluteClock) {
     pushContextEvenOdd(checkFrames);
+    csvFile.close();
   } else {
     pushContext(checkFrames);
   }
