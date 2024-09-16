@@ -25,7 +25,7 @@ size_t rasterizeTetraInd = 0;
 // Helper functions
 namespace {
 
-void prepReadBuffer(bool transparentBG, bool flatLighting = false);
+void prepReadBuffer(bool transparentBG);
 
 bool hasExtension(std::string str, std::string ext) {
 
@@ -48,7 +48,7 @@ std::string removeExtension(std::string fullname) {
 /* Book-keeping functionality shared across multiple functions before reading
  * a framebuffer.
  */
-void prepReadBuffer(bool transparentBG, bool flatLighting) {
+void prepReadBuffer(bool transparentBG) {
   render::engine->useAltDisplayBuffer = true;
   if (transparentBG) render::engine->lightCopy = true; // copy directly in to buffer without blending
 
@@ -59,7 +59,7 @@ void prepReadBuffer(bool transparentBG, bool flatLighting) {
   bool requestedAlready = redrawRequested();
   requestRedraw();
 
-  draw(false, false, flatLighting);
+  draw(false, false);
 
   if (requestedAlready) {
     requestRedraw();
@@ -274,7 +274,9 @@ void writeTetraVideoFrameFourGray(TetraFileDescriptors* tfds, const std::vector<
 
 
 void writeTetraVideoFrame(TetraFileDescriptors* tfds) {
-  prepReadBuffer(true, true);
+  bool prevLighting = options::useFlatLighting;
+  options::useFlatLighting = true;
+  prepReadBuffer(true);
 
   int w = view::bufferWidth;
   int h = view::bufferHeight;
@@ -297,6 +299,7 @@ void writeTetraVideoFrame(TetraFileDescriptors* tfds) {
 
   render::engine->useAltDisplayBuffer = false;
   render::engine->lightCopy = false; 
+  options::useFlatLighting = prevLighting;
 }
 
 
@@ -472,7 +475,11 @@ void saveImageFourGray(std::string filename, const std::vector<unsigned char>& b
 }
 
 void rasterizeTetra(std::string filename, SaveImageMode mode) { 
-  prepReadBuffer(true, true);
+  // Set flat lighting for correct screenshot
+  bool prevLighting = options::useFlatLighting;
+  options::useFlatLighting = true;
+
+  prepReadBuffer(true);
 
   int w = view::bufferWidth;
   int h = view::bufferHeight;
@@ -496,6 +503,7 @@ void rasterizeTetra(std::string filename, SaveImageMode mode) {
 
   render::engine->useAltDisplayBuffer = false;
   render::engine->lightCopy = false;
+  options::useFlatLighting = prevLighting;
 } 
 
 void rasterizeTetra(SaveImageMode mode) {

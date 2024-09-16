@@ -634,14 +634,14 @@ void renderScene() {
   }
 }
 
-void renderSceneToScreen(bool flatLighting) {
+void renderSceneToScreen() {
   render::engine->bindDisplay();
   if (options::debugDrawPickBuffer) {
     // special debug draw
     pick::evaluatePickQuery(-1, -1); // populate the buffer
     render::engine->pickFramebuffer->blitTo(render::engine->displayBuffer.get());
   } else {
-    render::engine->applyLightingTransform(render::engine->sceneColorFinal, flatLighting);
+    render::engine->applyLightingTransform(render::engine->sceneColorFinal);
   }
 }
 
@@ -955,7 +955,7 @@ void buildEvenOddGui() {
   ImGui::End();
 }
 
-void draw(bool withUI, bool withContextCallback, bool flatLighting) {
+void draw(bool withUI, bool withContextCallback) {
   processLazyProperties();
 
   // Update buffer and context
@@ -1014,7 +1014,7 @@ void draw(bool withUI, bool withContextCallback, bool flatLighting) {
     renderScene();
     redrawNextFrame = false;
   }
-  renderSceneToScreen(flatLighting);
+  renderSceneToScreen();
 
   // Draw the GUI
   if (withUI) {

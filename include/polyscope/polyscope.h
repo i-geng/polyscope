@@ -163,7 +163,7 @@ void refresh();
 
 // Main draw call, which handles all 3D rendering & UI management.
 // End users generally should not call this function. Consider requestRedraw() or screenshot().
-void draw(bool withUI = true, bool withContextCallback = true, bool flatLighting = false);
+void draw(bool withUI = true, bool withContextCallback = true);
 
 // Debug function for even-odd rendering
 void drawBlankFrame(bool withUI = true, bool withContextCallback = true);

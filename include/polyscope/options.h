@@ -79,6 +79,9 @@ extern std::string screenshotExtension; // sets the extension used for automatic
 
 // === Rendering parameters
 
+// Enable flat lighting (no tonemapping or gamma correction)
+extern bool useFlatLighting;
+
 // SSAA scaling in pixel multiples
 extern int ssaaFactor;
 
