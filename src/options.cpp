@@ -43,6 +43,7 @@ float shadowDarkness = 0.25;
 
 // Rendering options
 
+bool useFlatLighting = false;
 int ssaaFactor = 1;
 
 // Transparency
