@@ -56,14 +56,6 @@ auto lastMainLoopIterTime = std::chrono::steady_clock::now();
 // auto frameStartTime = std::chrono::high_resolution_clock::now();
 auto frameZeroTime = std::chrono::steady_clock::now();
 auto frameStartTime = std::chrono::steady_clock::now();
-int frameIndex = -1;
-// Open file for timing data
-// std::ofstream csvFile("swapBuffers_mirror_timing.csv");
-auto startProfiling = std::chrono::steady_clock::now();
-auto endProfiling = std::chrono::steady_clock::now();
-std::ofstream csvFile("swapBuffers_timing.csv");
-// std::ofstream csvFile("frame_timing.csv");
-// std::ofstream csvFile("draw_timing.csv");
 
 const std::string prefsFilename = ".polyscope.ini";
 
@@ -956,6 +948,7 @@ void buildEvenOddGui() {
 }
 
 void draw(bool withUI, bool withContextCallback) {
+
   processLazyProperties();
 
   // Update buffer and context
@@ -1219,7 +1212,6 @@ void show(size_t forFrames) {
 
   if (options::renderEvenOddAbsoluteClock) {
     pushContextEvenOdd(checkFrames);
-    csvFile.close();
   } else {
     pushContext(checkFrames);
   }

@@ -477,6 +477,7 @@ public:
   virtual void setScreenBufferViewports();
   virtual void
   applyLightingTransform(std::shared_ptr<TextureBuffer>& texture); // tonemap and gamma correct, render to active buffer
+
   void updateMinDepthTexture();
   void renderBackground(); // respects background setting
 
