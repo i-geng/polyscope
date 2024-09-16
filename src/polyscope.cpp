@@ -52,10 +52,9 @@ float leftWindowsWidth = 305;
 float rightWindowsWidth = 500;
 
 auto lastMainLoopIterTime = std::chrono::steady_clock::now();
-// auto frameZeroTime = std::chrono::high_resolution_clock::now();
-// auto frameStartTime = std::chrono::high_resolution_clock::now();
 auto frameZeroTime = std::chrono::steady_clock::now();
 auto frameStartTime = std::chrono::steady_clock::now();
+int frameIndex = -1;
 
 const std::string prefsFilename = ".polyscope.ini";
 
@@ -1187,8 +1186,6 @@ void mainLoopIterationEvenOdd(bool drawBlank) {
 }
 
 void show(size_t forFrames) {
-
-  csvFile << "Frame,Duration(ms)\n";
 
   if (!state::initialized) {
     exception("must initialize Polyscope with polyscope::init() before calling polyscope::show().");
