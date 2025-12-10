@@ -13,13 +13,13 @@ bool allowHeadlessBackends = false;
 bool errorsThrowExceptions = false;
 bool debugDrawPickBuffer = false;
 int maxFPS = 60;
+float targetSleep = 85.0;
 #ifdef _WIN32
 // set the default vsync to false on windows, to workaround an glfw errors from an alleged driver bug
 bool enableVSync = false;
 #else
 bool enableVSync = true;
 #endif
-float targetSleep = 85.0;
 LimitFPSMode frameTickLimitFPSMode = LimitFPSMode::SkipFramesToHitTarget;
 
 bool usePrefsFile = true;
@@ -56,6 +56,8 @@ float shadowDarkness = 0.25;
 
 // Rendering options
 
+bool useFlatLighting = false;
+float uiScale = -1.0; // unset, must be set manually or during initialization
 int ssaaFactor = 1;
 
 // Transparency
