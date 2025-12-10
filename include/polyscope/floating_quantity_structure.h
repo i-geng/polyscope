@@ -44,13 +44,14 @@ public:
   // Build the imgui display
   virtual void buildUI() override;
   virtual void buildCustomUI() override;
-  virtual void buildPickUI(size_t localPickID) override;
+  virtual void buildPickUI(const PickResult& result) override;
   virtual void buildCustomOptionsUI() override;
 
   // Standard structure overrides
   virtual void draw() override;
   virtual void drawDelayed() override;
   virtual void drawPick() override;
+  virtual void drawPickDelayed() override;
   virtual bool hasExtents() override;
   virtual void updateObjectSpaceBounds() override;
   virtual std::string typeName() override;

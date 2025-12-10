@@ -10,6 +10,7 @@
 #include <unordered_set>
 
 #include "imgui.h"
+#include "implot.h"
 
 #include "polyscope/context.h"
 #include "polyscope/group.h"
@@ -64,11 +65,17 @@ void frameTick();
 void fullFrameTick();
 
 // Do shutdown work and de-initialize Polyscope
-void shutdown();
+void shutdown(bool allowMidFrameShutdown = false);
 
 // Returns true if the user has tried to exit the window at the OS level, e.g clicking the close button. Useful for
 // deciding when to exit your control loop when using frameTick()
 bool windowRequestsClose();
+
+// Is Polyscope running in 'headless' mode? Headless means there is no physical display to open windows on,
+// e.g. when running on a remote server. It is still possible to run Polyscope in such settings with a supported
+// backend (currently, the EGL backend only), and render to save screenshots or for other purposes.
+// Can only be called after initialization.
+bool isHeadless();
 
 // === Global variables ===
 namespace state {
@@ -130,7 +137,7 @@ extern Context globalContext;
 Structure* getStructure(std::string type, std::string name = "");
 
 // True if such a structure exists
-bool hasStructure(std::string type, std::string name = "");
+bool hasStructure(std::string type, std::string name);
 
 // De-register a structure, of any type. Also removes any quantities associated with the structure
 void removeStructure(Structure* structure, bool errorIfAbsent = false);
@@ -212,6 +219,7 @@ void drawStructuresDelayed();
 // Called to check any options that might have been changed and perform appropriate updates. Users generally should not
 // need to call this directly.
 void processLazyProperties();
+void processLazyPropertiesOutsideOfImGui();
 
 
 } // namespace polyscope

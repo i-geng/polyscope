@@ -5,11 +5,11 @@
 #include "polyscope/polyscope.h"
 
 #include "polyscope/affine_remapper.h"
-#include "polyscope/histogram.h"
 #include "polyscope/render/color_maps.h"
 #include "polyscope/render/engine.h"
 #include "polyscope/scalar_quantity.h"
 #include "polyscope/surface_mesh.h"
+#include "polyscope/texture_map_quantity.h"
 
 namespace polyscope {
 
@@ -25,11 +25,15 @@ public:
 
   virtual void draw() override;
   virtual void buildCustomUI() override;
+  virtual void buildSurfaceScalarOptionsUI() {};
   virtual std::string niceName() override;
   virtual void refresh() override;
 
-protected:
+  virtual std::shared_ptr<render::AttributeBuffer> getAttributeBuffer() = 0;
+
   const std::string definedOn;
+
+protected:
   std::shared_ptr<render::ShaderProgram> program;
 
   // Helpers
@@ -47,6 +51,8 @@ public:
 
   virtual void createProgram() override;
 
+  virtual std::shared_ptr<render::AttributeBuffer> getAttributeBuffer() override;
+
   void buildVertexInfoGUI(size_t vInd) override;
 };
 
@@ -61,7 +67,7 @@ public:
                             DataType dataType_ = DataType::STANDARD);
 
   virtual void createProgram() override;
-
+  virtual std::shared_ptr<render::AttributeBuffer> getAttributeBuffer() override;
   void buildFaceInfoGUI(size_t fInd) override;
 };
 
@@ -76,7 +82,7 @@ public:
                             DataType dataType_ = DataType::STANDARD);
 
   virtual void createProgram() override;
-
+  virtual std::shared_ptr<render::AttributeBuffer> getAttributeBuffer() override;
   void buildEdgeInfoGUI(size_t edgeInd) override;
 };
 
@@ -90,7 +96,7 @@ public:
                                 DataType dataType_ = DataType::STANDARD);
 
   virtual void createProgram() override;
-
+  virtual std::shared_ptr<render::AttributeBuffer> getAttributeBuffer() override;
   void buildHalfedgeInfoGUI(size_t heInd) override;
 };
 
@@ -104,7 +110,7 @@ public:
                               DataType dataType_ = DataType::STANDARD);
 
   virtual void createProgram() override;
-
+  virtual std::shared_ptr<render::AttributeBuffer> getAttributeBuffer() override;
   void buildCornerInfoGUI(size_t heInd) override;
 };
 
@@ -112,18 +118,20 @@ public:
 // ==========          Texture Scalar            ==========
 // ========================================================
 
-class SurfaceTextureScalarQuantity : public SurfaceScalarQuantity {
+class SurfaceTextureScalarQuantity : public SurfaceScalarQuantity,
+                                     public TextureMapQuantity<SurfaceTextureScalarQuantity> {
 public:
   SurfaceTextureScalarQuantity(std::string name, SurfaceMesh& mesh_, SurfaceParameterizationQuantity& param_,
                                size_t dimX, size_t dimY, const std::vector<float>& values_, ImageOrigin origin_,
                                DataType dataType_ = DataType::STANDARD);
 
   virtual void createProgram() override;
+  virtual void buildSurfaceScalarOptionsUI() override;
+  virtual std::shared_ptr<render::AttributeBuffer> getAttributeBuffer() override;
+
 
 protected:
   SurfaceParameterizationQuantity& param;
-  size_t dimX, dimY;
-  ImageOrigin imageOrigin;
 };
 
 } // namespace polyscope

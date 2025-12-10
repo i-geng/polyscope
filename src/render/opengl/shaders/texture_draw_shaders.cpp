@@ -130,7 +130,7 @@ const ShaderStageSpecification PLAIN_RENDERIMAGE_TEXTURE_DRAW_FRAG_SHADER = {
         {"u_projMatrix", RenderDataType::Matrix44Float},
         {"u_invProjMatrix", RenderDataType::Matrix44Float},
         {"u_viewport", RenderDataType::Vector4Float},
-        {"u_transparency", RenderDataType::Float},
+        {"u_textureTransparency", RenderDataType::Float},
     }, 
 
     // attributes
@@ -147,7 +147,7 @@ R"(
   uniform mat4 u_projMatrix; 
   uniform mat4 u_invProjMatrix;
   uniform vec4 u_viewport;
-  uniform float u_transparency;
+  uniform float u_textureTransparency;
 
   in vec2 tCoord;
   uniform sampler2D t_depth;
@@ -163,6 +163,9 @@ R"(
 
     // Fetch values from texture
     float depth = texture(t_depth, tCoord).r;
+           
+    ${ GLOBAL_FRAGMENT_FILTER_PREP }$
+    ${ GLOBAL_FRAGMENT_FILTER }$
 
     if(depth > LARGE_FLOAT()) {
       discard;
@@ -188,7 +191,7 @@ R"(
     ${ GENERATE_LIT_COLOR }$
 
      // Set alpha
-    float alphaOut = u_transparency;
+    float alphaOut = u_textureTransparency;
     ${ GENERATE_ALPHA }$
     
     ${ PERTURB_LIT_COLOR }$
@@ -211,7 +214,7 @@ const ShaderStageSpecification PLAIN_RAW_RENDERIMAGE_TEXTURE_DRAW_FRAG_SHADER = 
         {"u_projMatrix", RenderDataType::Matrix44Float},
         {"u_invProjMatrix", RenderDataType::Matrix44Float},
         {"u_viewport", RenderDataType::Vector4Float},
-        {"u_transparency", RenderDataType::Float},
+        {"u_textureTransparency", RenderDataType::Float},
     }, 
 
     // attributes
@@ -228,7 +231,7 @@ R"(
   uniform mat4 u_projMatrix; 
   uniform mat4 u_invProjMatrix;
   uniform vec4 u_viewport;
-  uniform float u_transparency;
+  uniform float u_textureTransparency;
 
   in vec2 tCoord;
   uniform sampler2D t_depth;
@@ -270,7 +273,7 @@ R"(
     ${ GENERATE_LIT_COLOR }$
 
      // Set alpha
-    float alphaOut = u_transparency;
+    float alphaOut = u_textureTransparency;
     ${ GENERATE_ALPHA }$
            
     ${ PERTURB_LIT_COLOR }$
@@ -595,14 +598,14 @@ const ShaderReplacementRule TEXTURE_SET_TRANSPARENCY(
     /* rule name */ "TEXTURE_SET_TRANSPARENCY",
     { /* replacement sources */
       {"FRAG_DECLARATIONS", R"(
-          uniform float u_transparency;
+          uniform float u_textureTransparency;
         )" },
       {"TEXTURE_OUT_ADJUST", R"(
-        textureOut = vec4(textureOut.rgb, textureOut.a * u_transparency);
+        textureOut = vec4(textureOut.rgb, textureOut.a * u_textureTransparency);
       )"}
     },
     /* uniforms */ {
-        {"u_transparency", RenderDataType::Float},
+        {"u_textureTransparency", RenderDataType::Float},
     },
     /* attributes */ {},
     /* textures */ {}
@@ -612,14 +615,14 @@ const ShaderReplacementRule TEXTURE_SET_TRANSPARENCY_PREMULTIPLIED(
     /* rule name */ "TEXTURE_SET_TRANSPARENCY_PREMULTIPLIED",
     { /* replacement sources */
       {"FRAG_DECLARATIONS", R"(
-          uniform float u_transparency;
+          uniform float u_textureTransparency;
         )" },
       {"TEXTURE_OUT_ADJUST", R"(
-        textureOut *= u_transparency;
+        textureOut *= u_textureTransparency;
       )"}
     },
     /* uniforms */ {
-        {"u_transparency", RenderDataType::Float},
+        {"u_textureTransparency", RenderDataType::Float},
     },
     /* attributes */ {},
     /* textures */ {}

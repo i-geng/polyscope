@@ -24,6 +24,11 @@ class SimpleTriangleMesh;
 //   typedef SimpleTriangleMeshQuantity type;
 // };
 
+
+struct SimpleTriangleMeshPickResult {
+  // this does nothing for now, just matching pattern from other structures
+};
+
 class SimpleTriangleMesh : public QuantityStructure<SimpleTriangleMesh> {
 public:
   // === Member functions ===
@@ -36,12 +41,13 @@ public:
   // Build the imgui display
   virtual void buildCustomUI() override;
   virtual void buildCustomOptionsUI() override;
-  virtual void buildPickUI(size_t localPickID) override;
+  virtual void buildPickUI(const PickResult& result) override;
 
   // Standard structure overrides
   virtual void draw() override;
   virtual void drawDelayed() override;
   virtual void drawPick() override;
+  virtual void drawPickDelayed() override;
   virtual void updateObjectSpaceBounds() override;
   virtual std::string typeName() override;
   virtual void refresh() override;
@@ -62,6 +68,9 @@ public:
 
   // Misc data
   static const std::string structureTypeName;
+
+  // get data related to picking/selection
+  SimpleTriangleMeshPickResult interpretPickResult(const PickResult& result);
 
   // === Get/set visualization parameters
 

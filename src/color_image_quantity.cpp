@@ -87,7 +87,7 @@ void ColorImageQuantity::showFullscreen() {
       BlendMode::AlphaOver); // WARNING: I never really thought through this, may cause problems
 
   // Set uniforms
-  fullscreenProgram->setUniform("u_transparency", getTransparency());
+  fullscreenProgram->setUniform("u_textureTransparency", getTransparency());
   render::engine->setTonemapUniforms(*fullscreenProgram);
 
   fullscreenProgram->draw();
@@ -107,10 +107,12 @@ void ColorImageQuantity::showInImGuiWindow() {
 
   // since we are showing directly from the user's texture, we need to resposect the upper left ordering
   if (imageOrigin == ImageOrigin::LowerLeft) {
-    ImGui::Image(colors.getRenderTextureBuffer()->getNativeHandle(), ImVec2(w, h), ImVec2(0, 1), ImVec2(1, 0));
+    ImGui::Image((ImTextureID)(intptr_t)colors.getRenderTextureBuffer()->getNativeHandle(), ImVec2(w, h), ImVec2(0, 1),
+                 ImVec2(1, 0));
   } else if (imageOrigin == ImageOrigin::UpperLeft) {
-    ImGui::Image(colors.getRenderTextureBuffer()->getNativeHandle(), ImVec2(w, h));
+    ImGui::Image((ImTextureID)(intptr_t)colors.getRenderTextureBuffer()->getNativeHandle(), ImVec2(w, h));
   }
+  render::engine->preserveResourceUntilImguiFrameCompletes(colors.getRenderTextureBuffer());
 
   ImGui::End();
 }
@@ -126,7 +128,7 @@ void ColorImageQuantity::showInBillboard(glm::vec3 center, glm::vec3 upVec, glm:
 
   // set uniforms
   parent.setStructureUniforms(*billboardProgram);
-  billboardProgram->setUniform("u_transparency", getTransparency());
+  billboardProgram->setUniform("u_textureTransparency", getTransparency());
   billboardProgram->setUniform("u_billboardCenter", center);
   billboardProgram->setUniform("u_billboardUp", upVec);
   billboardProgram->setUniform("u_billboardRight", rightVec);

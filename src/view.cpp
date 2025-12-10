@@ -32,6 +32,7 @@ std::array<float, 4>& bgColor = state::globalContext.bgColor;
 glm::mat4x4& viewMat = state::globalContext.viewMat;
 double& fov = state::globalContext.fov;
 ProjectionMode& projectionMode = state::globalContext.projectionMode;
+glm::vec3& viewCenter = state::globalContext.viewCenter;
 bool& midflight = state::globalContext.midflight;
 float& flightStartTime = state::globalContext.flightStartTime;
 float& flightEndTime = state::globalContext.flightEndTime;
@@ -44,6 +45,8 @@ float& flightInitialFov = state::globalContext.flightInitialFov;
 
 
 // Default values
+const int defaultWindowWidth = 1280;
+const int defaultWindowHeight = 720;
 const double defaultNearClipRatio = 0.005;
 const double defaultFarClipRatio = 20.0;
 const double defaultFov = 45.;
@@ -87,6 +90,30 @@ std::string to_string(NavigateStyle style) {
   return ""; // unreachable
 }
 
+namespace { // anonymous helpers
+
+
+// A default pairing of <up,front> directions to fall back on when something goes wrong.
+const std::vector<std::pair<UpDir, FrontDir>> defaultUpFrontPairs{
+    {UpDir::NegXUp, FrontDir::NegYFront}, {UpDir::XUp, FrontDir::YFront},       {UpDir::NegYUp, FrontDir::NegZFront},
+    {UpDir::YUp, FrontDir::ZFront},       {UpDir::NegZUp, FrontDir::NegXFront}, {UpDir::ZUp, FrontDir::XFront}};
+
+FrontDir defaultOrthogonalFrontDir(UpDir upDir) {
+  for (const std::pair<UpDir, FrontDir>& p : defaultUpFrontPairs) {
+    if (p.first == upDir) return p.second;
+  }
+  return FrontDir::ZFront; // fallthrough, should be unused
+}
+
+UpDir defaultOrthogonalUpDir(FrontDir frontDir) {
+  for (const std::pair<UpDir, FrontDir>& p : defaultUpFrontPairs) {
+    if (p.second == frontDir) return p.first;
+  }
+  return UpDir::YUp; // fallthrough, should be unused
+}
+
+}; // namespace
+
 
 std::tuple<int, int> screenCoordsToBufferInds(glm::vec2 screenCoords) {
 
@@ -98,6 +125,21 @@ std::tuple<int, int> screenCoordsToBufferInds(glm::vec2 screenCoords) {
   yPos = std::max(std::min(yPos, view::bufferHeight - 1), 0);
 
   return std::tuple<int, int>(xPos, yPos);
+}
+
+glm::ivec2 screenCoordsToBufferIndsVec(glm::vec2 screenCoords) {
+  glm::ivec2 out;
+  std::tie(out.x, out.y) = screenCoordsToBufferInds(screenCoords);
+  return out;
+}
+
+glm::vec2 bufferIndsToScreenCoords(int xPos, int yPos) {
+  return glm::vec2{xPos * static_cast<float>(view::windowWidth) / view::bufferWidth,
+                   yPos * static_cast<float>(view::windowHeight) / view::bufferHeight};
+}
+
+glm::vec2 bufferIndsToScreenCoords(glm::ivec2 bufferInds) {
+  return bufferIndsToScreenCoords(bufferInds.x, bufferInds.y);
 }
 
 void processRotate(glm::vec2 startP, glm::vec2 endP) {
@@ -118,7 +160,7 @@ void processRotate(glm::vec2 startP, glm::vec2 endP) {
     float delPhi = 2.0 * dragDelta.y * moveScale;
 
     // Translate to center
-    viewMat = glm::translate(viewMat, state::center());
+    viewMat = glm::translate(viewMat, view::viewCenter);
 
     // Rotation about the horizontal axis
     glm::mat4x4 phiCamR = glm::rotate(glm::mat4x4(1.0), -delPhi, frameRightDir);
@@ -130,7 +172,13 @@ void processRotate(glm::vec2 startP, glm::vec2 endP) {
     viewMat = viewMat * thetaCamR;
 
     // Undo centering
-    viewMat = glm::translate(viewMat, -state::center());
+    viewMat = glm::translate(viewMat, -view::viewCenter);
+
+    // Enforce that the view indeed looks towards the center, as it always should with Turntable mode.
+    // Mostly this will have no effect, but it can prevent gradual numerical drift where the center shifts relvative to
+    // the view matrix.
+    lookAt(view::getCameraWorldPosition(), view::viewCenter, view::getUpVec(), false);
+
     break;
   }
   case NavigateStyle::Free: {
@@ -139,7 +187,7 @@ void processRotate(glm::vec2 startP, glm::vec2 endP) {
     float delPhi = 2.0 * dragDelta.y * moveScale;
 
     // Translate to center
-    viewMat = glm::translate(viewMat, state::center());
+    viewMat = glm::translate(viewMat, view::viewCenter);
 
     // Rotation about the vertical axis
     glm::mat4x4 thetaCamR = glm::rotate(glm::mat4x4(1.0), delTheta, frameUpDir);
@@ -150,7 +198,7 @@ void processRotate(glm::vec2 startP, glm::vec2 endP) {
     viewMat = viewMat * phiCamR;
 
     // Undo centering
-    viewMat = glm::translate(viewMat, -state::center());
+    viewMat = glm::translate(viewMat, -view::viewCenter);
     break;
   }
   case NavigateStyle::Planar: {
@@ -197,8 +245,8 @@ void processRotate(glm::vec2 startP, glm::vec2 endP) {
   }
   case NavigateStyle::FirstPerson: {
     glm::vec2 dragDelta = endP - startP;
-    float delTheta = 2.0 * dragDelta.x * moveScale;
-    float delPhi = 2.0 * dragDelta.y * moveScale;
+    float delTheta = 2.0 * dragDelta.x;
+    float delPhi = 2.0 * dragDelta.y;
 
     // Rotation about the vertical axis
     glm::vec3 rotAx = glm::mat3(viewMat) * getUpVec();
@@ -224,10 +272,20 @@ void processTranslate(glm::vec2 delta) {
   if (glm::length(delta) == 0) {
     return;
   }
+
   // Process a translation
   float movementScale = state::lengthScale * 0.6 * moveScale;
   glm::mat4x4 camSpaceT = glm::translate(glm::mat4x4(1.0), movementScale * glm::vec3(delta.x, delta.y, 0.0));
   viewMat = camSpaceT * viewMat;
+
+  if (getNavigateStyle() == NavigateStyle::Turntable) {
+    // also translate the turntable center according to the same motion
+    glm::vec3 oldCenter = view::viewCenter;
+    glm::vec3 worldspaceT =
+        glm::transpose(glm::mat3(viewMat)) * glm::vec3(-movementScale * delta.x, -movementScale * delta.y, 0.0);
+    glm::vec3 newCenter = oldCenter + worldspaceT;
+    setViewCenter(newCenter, false);
+  }
 
   requestRedraw();
   immediatelyEndFlight();
@@ -240,7 +298,7 @@ void processClipPlaneShift(double amount) {
   requestRedraw();
 }
 
-void processZoom(double amount) {
+void processZoom(double amount, bool relativeToCenter) {
   if (amount == 0.0) return;
   if (getNavigateStyle() == NavigateStyle::None || getNavigateStyle() == NavigateStyle::FirstPerson) {
     return;
@@ -250,7 +308,12 @@ void processZoom(double amount) {
 
   switch (projectionMode) {
   case ProjectionMode::Perspective: {
-    float movementScale = state::lengthScale * 0.1 * moveScale;
+    float movementScale;
+    if (relativeToCenter) {
+      movementScale = glm::length(view::viewCenter - view::getCameraWorldPosition()) * 0.3 * moveScale;
+    } else {
+      movementScale = state::lengthScale * 0.1 * moveScale;
+    }
     glm::mat4x4 camSpaceT = glm::translate(glm::mat4x4(1.0), glm::vec3(0., 0., movementScale * amount));
     viewMat = camSpaceT * viewMat;
     break;
@@ -295,12 +358,12 @@ void processKeyboardNavigation(ImGuiIO& io) {
 
     glm::vec3 delta{0.f, 0.f, 0.f};
 
-    if (ImGui::IsKeyDown(static_cast<ImGuiKey>(render::engine->getKeyCode('a')))) delta.x += 1.f;
-    if (ImGui::IsKeyDown(static_cast<ImGuiKey>(render::engine->getKeyCode('d')))) delta.x += -1.f;
-    if (ImGui::IsKeyDown(static_cast<ImGuiKey>(render::engine->getKeyCode('q')))) delta.y += 1.f;
-    if (ImGui::IsKeyDown(static_cast<ImGuiKey>(render::engine->getKeyCode('e')))) delta.y += -1.f;
-    if (ImGui::IsKeyDown(static_cast<ImGuiKey>(render::engine->getKeyCode('w')))) delta.z += 1.f;
-    if (ImGui::IsKeyDown(static_cast<ImGuiKey>(render::engine->getKeyCode('s')))) delta.z += -1.f;
+    if (ImGui::IsKeyDown(ImGuiKey_A)) delta.x += 1.f;
+    if (ImGui::IsKeyDown(ImGuiKey_D)) delta.x += -1.f;
+    if (ImGui::IsKeyDown(ImGuiKey_Q)) delta.y += 1.f;
+    if (ImGui::IsKeyDown(ImGuiKey_E)) delta.y += -1.f;
+    if (ImGui::IsKeyDown(ImGuiKey_W)) delta.z += 1.f;
+    if (ImGui::IsKeyDown(ImGuiKey_S)) delta.z += -1.f;
 
     if (glm::length(delta) > 0.) {
       hasMovement = true;
@@ -314,6 +377,14 @@ void processKeyboardNavigation(ImGuiIO& io) {
   if (hasMovement) {
     immediatelyEndFlight();
     requestRedraw();
+  }
+}
+
+void processSetCenter(glm::vec2 screenCoords) {
+  PickResult pickResult = pickAtScreenCoords(screenCoords);
+
+  if (pickResult.isHit) {
+    setViewCenter(pickResult.position, true);
   }
 }
 
@@ -346,7 +417,7 @@ void ensureViewValid() {
 
 glm::mat4 computeHomeView() {
 
-  glm::vec3 target = state::center();
+  glm::vec3 target = view::viewCenter;
   glm::vec3 upDir = getUpVec();
   glm::vec3 frontDir = getFrontVec();
   if (std::fabs(glm::dot(upDir, frontDir)) > 0.01) {
@@ -368,6 +439,7 @@ void resetCameraToHomeView() {
     return;
   }
 
+  view::viewCenter = state::center();
   viewMat = computeHomeView();
 
   fov = defaultFov;
@@ -381,6 +453,7 @@ void flyToHomeView() {
 
   // WARNING: Duplicated here and in resetCameraToHomeView()
 
+  view::viewCenter = state::center();
   glm::mat4x4 T = computeHomeView();
 
   float Tfov = defaultFov;
@@ -390,6 +463,122 @@ void flyToHomeView() {
   startFlightTo(T, Tfov);
 }
 
+void updateViewAndChangeNavigationStyle(NavigateStyle newStyle, bool flyTo) {
+  NavigateStyle oldStyle = view::style;
+  view::style = newStyle;
+
+  if (viewIsValid()) {
+    // for a few combinations of views, we can leave the camera where it is rather than resetting to the home view
+    if (newStyle == NavigateStyle::Free) {
+      // nothing needed
+    } else if (newStyle == NavigateStyle::FirstPerson && oldStyle == NavigateStyle::Turntable) {
+      // nothing needed
+    } else if (newStyle == NavigateStyle::Turntable) {
+      // leave the camera in the same location
+      lookAt(getCameraWorldPosition(), view::viewCenter, flyTo);
+    } else {
+      // General case, depending only on the target style
+      glm::mat4x4 T = computeHomeView();
+      if (flyTo) {
+        startFlightTo(T, view::fov);
+      } else {
+        viewMat = T;
+      }
+    }
+
+    requestRedraw();
+  }
+}
+
+void updateViewAndChangeUpDir(UpDir newUpDir, bool flyTo) {
+  view::upDir = newUpDir;
+
+  if (std::fabs(dot(view::getUpVec(), view::getFrontVec())) > 0.1) {
+    // if the user has foolishly set upDir and frontDir to be along the same axis, fix it
+    view::frontDir = defaultOrthogonalFrontDir(view::upDir);
+  }
+
+  if (viewIsValid()) {
+    switch (style) {
+    case NavigateStyle::Turntable:
+    case NavigateStyle::Planar:
+    case NavigateStyle::Arcball:
+    case NavigateStyle::FirstPerson: {
+      glm::vec3 lookDir = getCameraParametersForCurrentView().getLookDir();
+      if (std::fabs(dot(view::getUpVec(), lookDir)) < 0.01) {
+        // if the new up direction is colinear with the direction we're currently looking
+        lookDir = getFrontVec();
+      }
+
+      glm::vec3 camPos = getCameraWorldPosition();
+      lookAt(camPos, camPos + lookDir * state::lengthScale, flyTo);
+
+      break;
+    }
+    case NavigateStyle::Free:
+    case NavigateStyle::None:
+      // No change needed
+      break;
+    }
+
+    requestRedraw();
+  }
+}
+
+void updateViewAndChangeFrontDir(FrontDir newFrontDir, bool flyTo) {
+  view::frontDir = newFrontDir;
+
+  if (std::fabs(dot(view::getUpVec(), view::getFrontVec())) > 0.1) {
+    // if the user has foolishly set upDir and frontDir to be along the same axis, fix it
+    setUpDir(defaultOrthogonalUpDir(view::frontDir), flyTo);
+  }
+
+  if (viewIsValid()) {
+    switch (style) {
+    case NavigateStyle::Turntable:
+    case NavigateStyle::Planar:
+    case NavigateStyle::Arcball:
+    case NavigateStyle::Free:
+    case NavigateStyle::FirstPerson:
+    case NavigateStyle::None:
+      // Currently no views require updating to conform to the front dir, it is just for the default pose
+      break;
+    }
+
+    requestRedraw();
+  }
+}
+
+void updateViewAndChangeCenter(glm::vec3 newCenter, bool flyTo) {
+
+  view::viewCenter = newCenter;
+
+  if (viewIsValid()) {
+    // Update the view to be relative to the new center
+    // This is necessary for some view modes like Turntable, where the viewMat is in a constrained family with respect
+    // to the center.
+    switch (style) {
+    case NavigateStyle::Turntable:
+    case NavigateStyle::Planar:
+    case NavigateStyle::Arcball:
+      // this is a decent baseliny policy that always does _something_ sane
+      // might want nicer policies for certain cameras
+      lookAt(getCameraWorldPosition(), view::viewCenter, flyTo);
+      break;
+    case NavigateStyle::Free:
+    case NavigateStyle::FirstPerson:
+    case NavigateStyle::None:
+      // no change needed
+      break;
+    }
+
+    requestRedraw();
+  }
+}
+
+void setViewCenter(glm::vec3 newCenter, bool flyTo) { updateViewAndChangeCenter(newCenter, flyTo); }
+
+glm::vec3 getViewCenter() { return view::viewCenter; }
 
 void lookAt(glm::vec3 cameraLocation, glm::vec3 target, bool flyTo) {
   lookAt(cameraLocation, target, getUpVec(), flyTo);
@@ -409,7 +598,8 @@ void lookAt(glm::vec3 cameraLocation, glm::vec3 target, glm::vec3 upDir, bool fl
     }
   }
   if (!isFinite) {
-    warning("lookAt() yielded an invalid view. Is the look direction collinear with the up direction?");
+    warning("lookAt() yielded an invalid view. Is the location same as the target? Is the look direction collinear "
+            "with the up direction?");
     // just continue after; our view handling will take care of the NaN and set it to the default view
   }
 
@@ -451,6 +641,15 @@ CameraParameters getCameraParametersForCurrentView() {
 void setCameraViewMatrix(glm::mat4 mat) { viewMat = mat; }
 
 glm::mat4 getCameraViewMatrix() { return viewMat; }
+
+void setVerticalFieldOfViewDegrees(float newVal) {
+  view::fov = newVal;
+  requestRedraw();
+}
+
+float getVerticalFieldOfViewDegrees() { return view::fov; }
+
+float getAspectRatioWidthOverHeight() { return (float)bufferWidth / bufferHeight; }
 
 glm::mat4 getCameraPerspectiveMatrix() {
   double farClip = farClipRatio * state::lengthScale;
@@ -506,6 +705,8 @@ glm::vec3 screenCoordsToWorldRay(glm::vec2 screenCoords) {
   return worldRayDir;
 }
 
+glm::vec3 bufferIndsToWorldRay(glm::vec2 bufferInds) { return bufferCoordsToWorldRay(bufferInds); }
+
 glm::vec3 bufferCoordsToWorldRay(glm::vec2 bufferCoords) {
 
   glm::mat4 view = getCameraViewMatrix();
@@ -520,10 +721,14 @@ glm::vec3 bufferCoordsToWorldRay(glm::vec2 bufferCoords) {
 }
 
 
-glm::vec3 screenCoordsToWorldPosition(glm::vec2 screenCoords) {
+glm::vec3 screenCoordsAndDepthToWorldPosition(glm::vec2 screenCoords, float clipDepth) {
 
-  int xInd, yInd;
-  std::tie(xInd, yInd) = screenCoordsToBufferInds(screenCoords);
+  if (clipDepth == 1.) {
+    // if we didn't hit anything in the depth buffer, just return infinity
+    float inf = std::numeric_limits<float>::infinity();
+    return glm::vec3{inf, inf, inf};
+  }
+
 
   glm::mat4 view = getCameraViewMatrix();
   glm::mat4 viewInv = glm::inverse(view);
@@ -531,19 +736,10 @@ glm::vec3 screenCoordsToWorldPosition(glm::vec2 screenCoords) {
   glm::mat4 projInv = glm::inverse(proj);
   // glm::vec2 depthRange = {0., 1.}; // no support for nonstandard depth range, currently
 
-  // query the depth buffer to get depth
-  render::FrameBuffer* sceneFramebuffer = render::engine->sceneBuffer.get();
-  float depth = sceneFramebuffer->readDepth(xInd, view::bufferHeight - yInd);
-  if (depth == 1.) {
-    // if we didn't hit anything in the depth buffer, just return infinity
-    float inf = std::numeric_limits<float>::infinity();
-    return glm::vec3{inf, inf, inf};
-  }
-
   // convert depth to world units
   glm::vec2 screenPos{screenCoords.x / static_cast<float>(view::windowWidth),
                       1.f - screenCoords.y / static_cast<float>(view::windowHeight)};
-  float z = depth * 2.0f - 1.0f;
+  float z = clipDepth * 2.0f - 1.0f;
   glm::vec4 clipPos = glm::vec4(screenPos * 2.0f - 1.0f, z, 1.0f);
   glm::vec4 viewPos = projInv * clipPos;
   viewPos /= viewPos.w;
@@ -726,9 +922,9 @@ void buildViewGui() {
 
     std::string viewStyleName = to_string(view::style);
 
-    ImGui::PushItemWidth(120);
-    std::array<NavigateStyle, 5> styles{NavigateStyle::Turntable, NavigateStyle::Free, NavigateStyle::Planar,
-                                        NavigateStyle::None, NavigateStyle::FirstPerson};
+    ImGui::PushItemWidth(120 * options::uiScale);
+    std::array<NavigateStyle, 5> styles{NavigateStyle::Turntable, NavigateStyle::FirstPerson, NavigateStyle::Free,
+                                        NavigateStyle::Planar, NavigateStyle::None};
     if (ImGui::BeginCombo("##View Style", viewStyleName.c_str())) {
 
       for (NavigateStyle s : styles) {
@@ -745,7 +941,7 @@ void buildViewGui() {
     ImGui::Text("Camera Style");
 
     { // == Up direction
-      ImGui::PushItemWidth(120);
+      ImGui::PushItemWidth(120 * options::uiScale);
       std::string upStyleName;
       switch (upDir) {
       case UpDir::XUp:
@@ -800,7 +996,7 @@ void buildViewGui() {
     }
 
     { // == Front direction
-      ImGui::PushItemWidth(120);
+      ImGui::PushItemWidth(120 * options::uiScale);
       std::string frontStyleName;
       switch (frontDir) {
       case FrontDir::XFront:
@@ -892,7 +1088,7 @@ void buildViewGui() {
 
 
         ImGui::TextUnformatted("Bounding Box:");
-        ImGui::PushItemWidth(200);
+        ImGui::PushItemWidth(200 * options::uiScale);
         glm::vec3& bboxMin = std::get<0>(state::boundingBox);
         glm::vec3& bboxMax = std::get<1>(state::boundingBox);
         if (ImGui::InputFloat3("min", &bboxMin[0])) updateStructureExtents();
@@ -956,7 +1152,7 @@ void buildViewGui() {
       {
         ImGui::TextUnformatted("Dim:");
         ImGui::SameLine();
-        ImGui::PushItemWidth(50);
+        ImGui::PushItemWidth(50 * options::uiScale);
         bool changed = false;
         int currWidth = view::windowWidth;
         int currHeight = view::windowHeight;
@@ -994,14 +1190,7 @@ void buildViewGui() {
   }
 }
 
-void setUpDir(UpDir newUpDir, bool animateFlight) {
-  upDir = newUpDir;
-  if (animateFlight) {
-    flyToHomeView();
-  } else {
-    resetCameraToHomeView();
-  }
-}
+void setUpDir(UpDir newUpDir, bool animateFlight) { updateViewAndChangeUpDir(newUpDir, animateFlight); }
 
 UpDir getUpDir() { return upDir; }
 
@@ -1025,15 +1214,7 @@ glm::vec3 getUpVec() {
   return glm::vec3{0., 0., 0.};
 }
 
-void setFrontDir(FrontDir newFrontDir, bool animateFlight) {
-  frontDir = newFrontDir;
-  if (animateFlight) {
-    flyToHomeView();
-  } else {
-    resetCameraToHomeView();
-  }
-  requestRedraw();
-}
+void setFrontDir(FrontDir newFrontDir, bool animateFlight) { updateViewAndChangeFrontDir(newFrontDir, animateFlight); }
 
 FrontDir getFrontDir() { return frontDir; }
 
@@ -1059,21 +1240,7 @@ glm::vec3 getFrontVec() {
 
 
 void setNavigateStyle(NavigateStyle newStyle, bool animateFlight) {
-  NavigateStyle oldStyle = style;
-  style = newStyle;
-
-  // for a few combinations of views, we can leave the camera where it is rather than resetting to the home view
-  if (newStyle == NavigateStyle::Free ||
-      (newStyle == NavigateStyle::FirstPerson && oldStyle == NavigateStyle::Turntable)) {
-    return;
-  }
-
-  // reset to the home view
-  if (animateFlight) {
-    flyToHomeView();
-  } else {
-    resetCameraToHomeView();
-  }
+  updateViewAndChangeNavigationStyle(newStyle, animateFlight);
 }
 NavigateStyle getNavigateStyle() { return style; }
 

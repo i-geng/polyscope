@@ -66,7 +66,11 @@ void GroundPlane::populateGroundPlaneGeometry() {
 }
 
 void GroundPlane::prepare() {
+
   if (options::groundPlaneMode == GroundPlaneMode::None) {
+    // quick-out for the none case
+    groundPlanePrepared = true;
+    groundPlanePreparedMode = options::groundPlaneMode;
     return;
   }
 
@@ -163,6 +167,7 @@ void GroundPlane::prepare() {
   }
 
   groundPlanePrepared = true;
+  groundPlanePreparedMode = options::groundPlaneMode;
 }
 
 void GroundPlane::draw(bool isRedraw) {
@@ -173,7 +178,13 @@ void GroundPlane::draw(bool isRedraw) {
   // don't draw ground in planar mode
   if (view::style == view::NavigateStyle::Planar) return;
 
-  if (!groundPlanePrepared) {
+  // don't draw the ground in Simple transparency mode
+  // (there's not really any way to do so that doesn't look weird at the horizon boundary)
+  if (render::engine->getTransparencyMode() == TransparencyMode::Simple) {
+    return;
+  }
+
+  if (!groundPlanePrepared || groundPlanePreparedMode != options::groundPlaneMode) {
     prepare();
   }
   if (view::upDir != groundPlaneViewCached) {
@@ -196,7 +207,18 @@ void GroundPlane::draw(bool isRedraw) {
   double bboxBottom = sign == 1.0 ? std::get<0>(state::boundingBox)[iP] : std::get<1>(state::boundingBox)[iP];
   double bboxHeight = std::get<1>(state::boundingBox)[iP] - std::get<0>(state::boundingBox)[iP];
   double heightEPS = state::lengthScale * 1e-4;
-  double groundHeight = bboxBottom - sign * (options::groundPlaneHeightFactor.asAbsolute() + heightEPS);
+
+  double groundHeight = -777;
+  switch (options::groundPlaneHeightMode) {
+  case GroundPlaneHeightMode::Automatic: {
+    groundHeight = bboxBottom - sign * (options::groundPlaneHeightFactor.asAbsolute() + heightEPS);
+    break;
+  }
+  case GroundPlaneHeightMode::Manual: {
+    groundHeight = options::groundPlaneHeight;
+    break;
+  }
+  }
 
   // Viewport
   glm::vec4 viewport = render::engine->getCurrentViewport();
@@ -266,7 +288,7 @@ void GroundPlane::draw(bool isRedraw) {
     render::engine->setDepthMode(DepthMode::Less);
     sceneAltFrameBuffer->resize(factor * view::bufferWidth / 2, factor * view::bufferHeight / 2);
     sceneAltFrameBuffer->setViewport(0, 0, factor * view::bufferWidth / 2, factor * view::bufferHeight / 2);
-    render::engine->setCurrentPixelScaling(factor / 2.);
+    render::engine->setCurrentPixelScaling(factor / 2. * options::uiScale);
 
     sceneAltFrameBuffer->bindForRendering();
     sceneAltFrameBuffer->clearColor = {view::bgColor[0], view::bgColor[1], view::bgColor[2]};
@@ -366,7 +388,6 @@ void GroundPlane::draw(bool isRedraw) {
 
   // Render the ground plane
   render::engine->applyTransparencySettings();
-  render::engine->setDepthMode(DepthMode::Less);
   setUniforms();
   groundPlaneProgram->draw();
 }
@@ -387,10 +408,20 @@ void GroundPlane::buildGui() {
     return "";
   };
 
+  auto heightModeName = [](const GroundPlaneHeightMode& m) -> std::string {
+    switch (m) {
+    case GroundPlaneHeightMode::Automatic:
+      return "Automatic";
+    case GroundPlaneHeightMode::Manual:
+      return "Manual";
+    }
+    return "";
+  };
+
   ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
   if (ImGui::TreeNode("Ground Plane")) {
 
-    ImGui::PushItemWidth(160);
+    ImGui::PushItemWidth(160 * options::uiScale);
     if (ImGui::BeginCombo("Mode", modeName(options::groundPlaneMode).c_str())) {
       for (GroundPlaneMode m : {GroundPlaneMode::None, GroundPlaneMode::Tile, GroundPlaneMode::TileReflection,
                                 GroundPlaneMode::ShadowOnly}) {
@@ -404,7 +435,39 @@ void GroundPlane::buildGui() {
     }
     ImGui::PopItemWidth();
 
-    if (ImGui::SliderFloat("Height", options::groundPlaneHeightFactor.getValuePtr(), -1.0, 1.0)) requestRedraw();
+    // Height
+    ImGui::PushItemWidth(80 * options::uiScale);
+    switch (options::groundPlaneHeightMode) {
+    case GroundPlaneHeightMode::Automatic:
+      if (ImGui::SliderFloat("##HeightValue", options::groundPlaneHeightFactor.getValuePtr(), -1.0, 1.0))
+        requestRedraw();
+      break;
+    case GroundPlaneHeightMode::Manual:
+      int iP;
+      float sign;
+      std::tie(iP, sign) = getGroundPlaneAxisAndSign();
+      double bboxBottom = sign == 1.0 ? std::get<0>(state::boundingBox)[iP] : std::get<1>(state::boundingBox)[iP];
+      double bboxHeight = std::get<1>(state::boundingBox)[iP] - std::get<0>(state::boundingBox)[iP];
+      if (ImGui::SliderFloat("##HeightValue", &options::groundPlaneHeight, bboxBottom - 0.5 * bboxHeight,
+                             bboxBottom + bboxHeight)) {
+        requestRedraw();
+      }
+      break;
+    }
+    ImGui::PopItemWidth();
+    ImGui::SameLine();
+    ImGui::PushItemWidth(100 * options::uiScale);
+    if (ImGui::BeginCombo("Height##Mode", heightModeName(options::groundPlaneHeightMode).c_str())) {
+      for (GroundPlaneHeightMode m : {GroundPlaneHeightMode::Automatic, GroundPlaneHeightMode::Manual}) {
+        std::string mName = heightModeName(m);
+        if (ImGui::Selectable(mName.c_str(), options::groundPlaneHeightMode == m)) {
+          options::groundPlaneHeightMode = m;
+          requestRedraw();
+        }
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::PopItemWidth();
 
     switch (options::groundPlaneMode) {
     case GroundPlaneMode::None:

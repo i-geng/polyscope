@@ -13,16 +13,23 @@ enum class BackgroundView { None = 0 };
 enum class ProjectionMode { Perspective = 0, Orthographic };
 enum class TransparencyMode { None = 0, Simple, Pretty };
 enum class GroundPlaneMode { None, Tile, TileReflection, ShadowOnly };
+enum class GroundPlaneHeightMode { Automatic = 0, Manual };
 enum class BackFacePolicy { Identical, Different, Custom, Cull };
+enum class LimitFPSMode { IgnoreLimits = 0, BlockToHitTarget, SkipFramesToHitTarget};
 
 enum class PointRenderMode { Sphere = 0, Quad };
 enum class MeshElement { VERTEX = 0, FACE, EDGE, HALFEDGE, CORNER };
 enum class MeshShadeStyle { Smooth = 0, Flat, TriFlat };
+enum class MeshSelectionMode { Auto = 0, VerticesOnly, FacesOnly };
+enum class CurveNetworkElement { NODE = 0, EDGE };
 enum class VolumeMeshElement { VERTEX = 0, EDGE, FACE, CELL };
 enum class VolumeCellType { TET = 0, HEX };
+enum class VolumeGridElement { NODE = 0, CELL };
+enum class IsolineStyle { Stripe = 0, Contour };
 
 enum class ImplicitRenderMode { SphereMarch, FixedStep };
 enum class ImageOrigin { LowerLeft, UpperLeft };
+enum class FilterMode { Nearest = 0, Linear };
 
 enum class SaveImageMode { RG1G2B = 0, LMS_Q, FourGray };
 
@@ -57,7 +64,8 @@ enum class ManagedBufferType {
 // STANDARD: [-inf, inf], zero does not mean anything special (ie, position)
 // SYMMETRIC: [-inf, inf], zero is special (ie, net profit/loss)
 // MAGNITUDE: [0, inf], zero is special (ie, length of a vector)
-enum class DataType { STANDARD = 0, SYMMETRIC, MAGNITUDE };
+// CATEGORICAL: data is integers corresponding to labels, etc
+enum class DataType { STANDARD = 0, SYMMETRIC, MAGNITUDE, CATEGORICAL };
 
 
 }; // namespace polyscope

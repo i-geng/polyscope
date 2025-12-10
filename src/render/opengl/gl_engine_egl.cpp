@@ -12,18 +12,34 @@
 #include "stb_image.h"
 
 #include <algorithm>
+#include <cctype>
+#include <dlfcn.h>
 #include <set>
+#include <sstream>
+#include <string>
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 namespace polyscope {
 namespace render {
 namespace backend_openGL3 {
 
-GLEngineEGL* glEngineEGL = nullptr; // alias for global engine pointer
-extern GLEngine* glEngine;          // defined in gl_engine.h
+void initializeRenderEngine_egl() {
 
-namespace { // anonymous helpers
+  GLEngineEGL* glEngineEGL = new GLEngineEGL(); // create the new global engine object
+  engine = glEngineEGL;
 
-void checkEGLError(bool fatal = true) {
+  // initialize
+  glEngineEGL->initialize();
+  engine->allocateGlobalBuffersAndPrograms();
+  glEngineEGL->applyWindowSize();
+}
+
+GLEngineEGL::GLEngineEGL() {}
+GLEngineEGL::~GLEngineEGL() {}
+
+void GLEngineEGL::checkEGLError(bool fatal) {
 
   if (!options::enableRenderErrorChecks) {
     return;
@@ -105,52 +121,81 @@ void checkEGLError(bool fatal = true) {
     break;
   }
 
-  if (polyscope::options::verbosity > 0) {
-    std::cout << polyscope::options::printPrefix << "EGL Error!  Type: " << errText << std::endl;
-  }
+  info(0, "EGL Error!  Type: " + errText);
+
   if (fatal) {
     exception("EGL error occurred. Text: " + errText);
   }
 }
-} // namespace
-
-void initializeRenderEngine_egl() {
-
-  glEngineEGL = new GLEngineEGL(); // create the new global engine object
-
-  engine = glEngineEGL; // we keep a few copies of this pointer with various types
-  glEngine = glEngineEGL;
-
-  // initialize
-  glEngineEGL->initialize();
-  engine->allocateGlobalBuffersAndPrograms();
-  glEngineEGL->applyWindowSize();
-}
-
-GLEngineEGL::GLEngineEGL() {}
-GLEngineEGL::~GLEngineEGL() {
-  // eglTerminate(eglDisplay) // TODO handle termination
-}
 
 void GLEngineEGL::initialize() {
 
+
   // === Initialize EGL
 
-  // Get the default display
-  eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-  if (eglDisplay == EGL_NO_DISPLAY) {
-    exception("ERROR: Failed to initialize EGL, could not get default display");
+  // Runtime-load shared library functions for EGL
+  // (see note inside for details)
+  resolveEGL();
+
+  // Query the available EGL devices
+  const int N_MAX_DEVICE = 256;
+  EGLDeviceEXT rawDevices[N_MAX_DEVICE];
+  EGLint nDevices;
+  if (!eglQueryDevicesEXT(N_MAX_DEVICE, rawDevices, &nDevices)) {
+    error("EGL: Failed to query devices.");
+  }
+  if (nDevices == 0) {
+    error("EGL: No devices found.");
+  }
+  info("EGL: Found " + std::to_string(nDevices) + " EGL devices.");
+
+  // Build an ordered list of which devices to try initializing with
+  std::vector<int32_t> deviceIndsToTry;
+  if (options::eglDeviceIndex == -1) {
+    info("EGL: No device index specified, attempting to intialize with each device in heuristic-guess order until "
+         "success.");
+
+    deviceIndsToTry.resize(nDevices);
+    std::iota(deviceIndsToTry.begin(), deviceIndsToTry.end(), 0);
+    sortAvailableDevicesByPreference(deviceIndsToTry, rawDevices);
+
+  } else {
+    info("EGL: Device index " + std::to_string(options::eglDeviceIndex) + " manually selected, using that device.");
+
+    if (options::eglDeviceIndex >= nDevices) {
+      error("EGL: Device index " + std::to_string(options::eglDeviceIndex) + " manually selected, but only " +
+            std::to_string(nDevices) + " devices available.");
+    }
+
+    deviceIndsToTry.push_back(options::eglDeviceIndex);
   }
 
-  // Configure
+  bool successfulInit = false;
   EGLint majorVer, minorVer;
-  bool success = eglInitialize(eglDisplay, &majorVer, &minorVer);
-  if (!success) {
-    checkEGLError(false);
+  for (int32_t iDevice : deviceIndsToTry) {
+
+    info("EGL: Attempting initialization with device " + std::to_string(iDevice));
+    EGLDeviceEXT device = rawDevices[iDevice];
+
+    // Get an EGLDisplay for the device
+    // (use the -platform / EXT version because it is the only one that seems to work in headless environments)
+    eglDisplay = eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, device, NULL);
+    if (eglDisplay == EGL_NO_DISPLAY) {
+      continue;
+    }
+
+    // Configure
+    successfulInit = eglInitialize(eglDisplay, &majorVer, &minorVer);
+    if (successfulInit) {
+      break;
+    }
+  }
+
+  if (!successfulInit) {
     exception("ERROR: Failed to initialize EGL");
   }
   checkEGLError();
-
+  info("EGL: Initialization successful");
 
   // this has something to do with the EGL configuration, I don't understand exactly what
   // clang-format off
@@ -203,10 +248,17 @@ void GLEngineEGL::initialize() {
     exception(options::printPrefix + "ERROR: Failed to load openGL using GLAD");
   }
 #endif
-  if (options::verbosity > 0) {
-    std::cout << options::printPrefix << "Backend: openGL3_egl -- "
-              << "Loaded openGL version: " << glGetString(GL_VERSION) << " -- "
-              << "EGL version: " << majorVer << "." << minorVer << std::endl;
+
+  {
+    std::stringstream ss;
+    ss << "Backend: openGL3_egl -- "
+       << "Loaded openGL version: " << glGetString(GL_VERSION) << " -- "
+       << "EGL version: " << majorVer << "." << minorVer;
+    info(0, ss.str());
+  }
+
+  if(options::uiScale < 0) { // only set from system if the value is -1, meaning not set yet
+    options::uiScale = 1.;
   }
 
   { // Manually create the screen frame buffer
@@ -229,6 +281,155 @@ void GLEngineEGL::initialize() {
   checkError();
 }
 
+void GLEngineEGL::resolveEGL() {
+
+  // This function does a bunch of gymnastics to avoid taking on libEGL.so as a dependency. This is a
+  // machine/driver-specific library, so we would have to dynamically load it on the end user's machine. However,
+  // simply specifying it as a shared library at build time would make it required for Polyscope, even for users
+  // who would not use EGL, and we don't want that. Instead, we manually dynamically load the functions below.
+  //
+  // Note that this is on top of the dynamic loading that always happens when you load exention functions from libEGL.
+  // We are furthermore loading `libEGL.so` dynamically in the middle of runtime, rather than at load time as via ldd
+  // etc. At the end of this function we also load EGL extensions in the usual way.
+
+  info(5, "Attempting to dlopen libEGL.so");
+  void* handle = dlopen("libEGL.so", RTLD_LAZY);
+  if (handle) info(5, "  ...loaded libEGL.so");
+  if (!handle) {
+    handle = dlopen("libEGL.so.1", RTLD_LAZY); // try it while we're at it, happens on OSMesa without dev headers
+  }
+  if (handle) info(5, "  ...loaded libEGL.so.1");
+  if (!handle) {
+    error(
+        "EGL: Could not open libEGL.so. Ensure graphics drivers are installed, or fall back on (much slower!) software "
+        "rendering by installing OSMesa from your package manager.");
+  }
+
+  // Get EGL functions
+  info(5, "Attempting to dlsym resolve EGL functions");
+
+  eglGetError = (eglGetErrorT)dlsym(handle, "eglGetError");
+  eglGetPlatformDisplay = (eglGetPlatformDisplayT)dlsym(handle, "eglGetPlatformDisplay");
+  eglChooseConfig = (eglChooseConfigT)dlsym(handle, "eglChooseConfig");
+  eglInitialize = (eglInitializeT)dlsym(handle, "eglInitialize");
+  eglChooseConfig = (eglChooseConfigT)dlsym(handle, "eglChooseConfig");
+  eglBindAPI = (eglBindAPIT)dlsym(handle, "eglBindAPI");
+  eglCreateContext = (eglCreateContextT)dlsym(handle, "eglCreateContext");
+  eglMakeCurrent = (eglMakeCurrentT)dlsym(handle, "eglMakeCurrent");
+  eglDestroyContext = (eglDestroyContextT)dlsym(handle, "eglDestroyContext");
+  eglTerminate = (eglTerminateT)dlsym(handle, "eglTerminate");
+  eglGetProcAddress = (eglGetProcAddressT)dlsym(handle, "eglGetProcAddress");
+  eglQueryString = (eglQueryStringT)dlsym(handle, "eglQueryString");
+
+  if (!eglGetError || !eglGetPlatformDisplay || !eglChooseConfig || !eglInitialize || !eglChooseConfig || !eglBindAPI ||
+      !eglCreateContext || !eglMakeCurrent || !eglDestroyContext || !eglTerminate || !eglGetProcAddress ||
+      !eglQueryString) {
+    dlclose(handle);
+    const char* errTextPtr = dlerror();
+    std::string errText = "";
+    if (errTextPtr) {
+      errText = errTextPtr;
+    }
+    error("EGL: Error loading symbol " + errText);
+  }
+
+  info(5, "...resolved EGL functions");
+
+  // ... at this point, we have essentially loaded libEGL.so
+
+  // === Resolve EGL extension functions
+
+  // Helper function to get an EGL extension function and error-check that
+  // we got it successfully
+  auto getEGLExtensionProcAndCheck = [&](std::string name) {
+    void* procAddr = (void*)(eglGetProcAddress(name.c_str()));
+    if (!procAddr) {
+      error("EGL failed to get function pointer for " + name);
+    }
+    return procAddr;
+  };
+
+  // Pre-load required extension functions
+  eglQueryDevicesEXT = (PFNEGLQUERYDEVICESEXTPROC)getEGLExtensionProcAndCheck("eglQueryDevicesEXT");
+  const char* extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+  if (extensions && std::string(extensions).find("EGL_EXT_device_query") != std::string::npos) {
+    eglQueryDeviceStringEXT = (PFNEGLQUERYDEVICESTRINGEXTPROC)getEGLExtensionProcAndCheck("eglQueryDeviceStringEXT");
+  }
+}
+
+void GLEngineEGL::sortAvailableDevicesByPreference(
+
+    std::vector<int32_t>& deviceInds, EGLDeviceEXT rawDevices[]) {
+
+  // check that we actually have the query extension
+  const char* extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+  if (!eglQueryDeviceStringEXT) {
+    info("EGL: cannot sort devices by preference, EGL_EXT_device_query is not supported");
+    return;
+  }
+
+  // Build a list of devices and assign a score to each
+  std::vector<std::tuple<int32_t, int32_t>> scoreDevices;
+  for (int32_t iDevice : deviceInds) {
+    EGLDeviceEXT device = rawDevices[iDevice];
+    int score = 0;
+
+    // Heuristic, non-software renderers seem to come last, so add a term to the score that prefers later-listed entries
+    // TODO find a way to test for software rsterization for real
+    score += iDevice;
+
+    const char* vendorStrRaw = eglQueryDeviceStringEXT(device, EGL_VENDOR);
+
+    // NOTE: on many machines (cloud VMs?) the query string above is nullptr, and this whole function does nothing
+    // useful
+    if (vendorStrRaw == nullptr) {
+      info(5, "EGLDevice " + std::to_string(iDevice) + " -- vendor: NULL  priority score: " + std::to_string(score));
+      scoreDevices.emplace_back(score, iDevice);
+      continue;
+    }
+
+    std::string vendorStr = vendorStrRaw;
+
+    // lower-case it for the checks below
+    std::transform(vendorStr.begin(), vendorStr.end(), vendorStr.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    // Problem: we want to detect and prefer discrete graphics cars over integrated GPUs and
+    // software / VM renderers. However, I can't figure out how to get an "is integrated"
+    // property from the query device strings above. Even worse, 'AMD" and "Intel" are both
+    // ambiguous and could refer to the integrated GPU or a discrete GPU.
+    //
+    // As a workaround, we assign scores based on the vendor: nvidia is always discrete, amd could be either, intel is
+    // usually integrated, but still preferred over software renderers
+    //
+    // ONEDAY: figure out a better policy to detect discrete devices....
+
+    // assign scores based on vendors to prefer discrete gpus
+    const int32_t VENDOR_MULT = 100; // give this score entry a very high preference
+    if (vendorStr.find("intel") != std::string::npos) score += 1 * VENDOR_MULT;
+    if (vendorStr.find("amd") != std::string::npos) score += 2 * VENDOR_MULT;
+    if (vendorStr.find("nvidia") != std::string::npos) score += 3 * VENDOR_MULT;
+
+    // at high verbosity levels, log the priority
+    if (polyscope::options::verbosity > 5) {
+      info(5, "EGLDevice " + std::to_string(iDevice) + " -- vendor: " + vendorStr +
+                  "  priority score: " + std::to_string(score));
+    }
+
+    scoreDevices.emplace_back(score, iDevice);
+  }
+
+  // sort them by highest score
+  std::sort(scoreDevices.begin(), scoreDevices.end());
+  std::reverse(scoreDevices.begin(), scoreDevices.end());
+
+
+  // store them back in the given array
+  for (size_t i = 0; i < deviceInds.size(); i++) {
+    deviceInds[i] = std::get<1>(scoreDevices[i]);
+  }
+}
+
 
 void GLEngineEGL::initializeImGui() {
 
@@ -236,7 +437,30 @@ void GLEngineEGL::initializeImGui() {
   // functions
 
   ImGui::CreateContext();
+  ImPlot::CreateContext(); 
   configureImGui();
+}
+
+void GLEngineEGL::configureImGui() {
+
+  // don't both calling the style callbacks, there is no UI
+
+  if (options::uiScale < 0) {
+    exception("uiScale is < 0. Perhaps it wasn't initialized?");
+  }
+
+  ImGuiIO& io = ImGui::GetIO();
+  io.Fonts->Clear();
+  io.Fonts->Build();
+}
+
+void GLEngineEGL::shutdown() {
+  checkError();
+  shutdownImGui();
+
+  eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+  eglDestroyContext(eglDisplay, eglContext);
+  eglTerminate(eglDisplay);
 }
 
 void GLEngineEGL::shutdownImGui() { ImGui::DestroyContext(); }
@@ -251,7 +475,10 @@ void GLEngineEGL::ImGuiNewFrame() {
   ImGui::NewFrame();
 }
 
-void GLEngineEGL::ImGuiRender() { ImGui::Render(); }
+void GLEngineEGL::ImGuiRender() {
+  ImGui::Render();
+  clearResourcesPreservedForImguiFrame();
+}
 
 
 void GLEngineEGL::swapDisplayBuffers() {
@@ -319,11 +546,6 @@ void GLEngineEGL::pollEvents() {
 bool GLEngineEGL::isKeyPressed(char c) {
   // not defined in headless mode
   return false;
-}
-
-int GLEngineEGL::getKeyCode(char c) {
-  // not defined in headless mode
-  return -1;
 }
 
 std::string GLEngineEGL::getClipboardText() {

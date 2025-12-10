@@ -7,8 +7,8 @@
 #include "stb_image_write.h"
 
 #include <algorithm>
-#include <string>
 #include <stdio.h>
+#include <string>
 
 namespace polyscope {
 
@@ -38,6 +38,103 @@ bool hasExtension(std::string str, std::string ext) {
     return false;
   }
 }
+
+// Helper to actually do the render pass and return the result in a buffer
+std::vector<unsigned char> getRenderInBuffer(const ScreenshotOptions& options = {}) {
+  checkInitialized();
+
+  render::engine->useAltDisplayBuffer = true;
+  if (options.transparentBackground) render::engine->lightCopy = true; // copy directly in to buffer without blending
+
+  // == Make sure we render first
+  processLazyProperties();
+
+  // save the redraw requested bit and restore it below
+  bool requestedAlready = redrawRequested();
+  requestRedraw();
+
+  // There's a ton of junk needed here to handle the includeUI case...
+  // Create a new context and push it on to the stack
+  // FIXME this solution doesn't really work, it forgets UI state like which nodes were open, scrolled setting, etc.
+  // I'm not sure if it's possible to do this like we want in ImGui. The alternate solution would be to save the render
+  // from the previous render pass, but I think that comes with other problems on the Polyscope side. I'm not sure what
+  // the answer is.
+  ImGuiContext* oldContext;
+  ImGuiContext* newContext;
+  ImPlotContext* oldPlotContext;
+  ImPlotContext* newPlotContext;
+  if (options.includeUI) {
+    // WARNING: code duplicated here and in pushContext()
+    oldContext = ImGui::GetCurrentContext();
+    newContext = ImGui::CreateContext();
+    oldPlotContext = ImPlot::GetCurrentContext();
+    newPlotContext = ImPlot::CreateContext();
+    ImGuiIO& oldIO = ImGui::GetIO(); // used to GLFW + OpenGL data to the new IO object
+#ifdef IMGUI_HAS_DOCK
+    ImGuiPlatformIO& oldPlatformIO = ImGui::GetPlatformIO();
+#endif
+    ImGui::SetCurrentContext(newContext);
+    ImPlot::SetCurrentContext(newPlotContext);
+
+#ifdef IMGUI_HAS_DOCK
+    // Propagate GLFW window handle to new context
+    ImGui::GetMainViewport()->PlatformHandle = oldPlatformIO.Viewports[0]->PlatformHandle;
+#endif
+    ImGui::GetIO().BackendPlatformUserData = oldIO.BackendPlatformUserData;
+    ImGui::GetIO().BackendRendererUserData = oldIO.BackendRendererUserData;
+
+    render::engine->configureImGui();
+
+    // render a few times, to let imgui shake itself out
+    for (int i = 0; i < 3; i++) {
+      draw(options.includeUI, false);
+    }
+  }
+
+  draw(options.includeUI, false);
+
+  if (options.includeUI) {
+    // WARNING: code duplicated here and in pushContext()
+    // Workaround overzealous ImGui assertion before destroying any inner context
+    // https://github.com/ocornut/imgui/pull/7175
+    ImGui::SetCurrentContext(newContext);
+    ImPlot::SetCurrentContext(newPlotContext);
+    ImGui::GetIO().BackendPlatformUserData = nullptr;
+    ImGui::GetIO().BackendRendererUserData = nullptr;
+
+    ImPlot::DestroyContext(newPlotContext);
+    ImGui::DestroyContext(newContext);
+
+    ImGui::SetCurrentContext(oldContext);
+    ImPlot::SetCurrentContext(oldPlotContext);
+  }
+
+
+  if (requestedAlready) {
+    requestRedraw();
+  }
+
+  // these _should_ always be accurate
+  int w = view::bufferWidth;
+  int h = view::bufferHeight;
+  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
+
+  // Set alpha to 1
+  if (!options.transparentBackground) {
+    for (int j = 0; j < h; j++) {
+      for (int i = 0; i < w; i++) {
+        int ind = i + j * w;
+        buff[4 * ind + 3] = std::numeric_limits<unsigned char>::max();
+      }
+    }
+  }
+
+  render::engine->useAltDisplayBuffer = false;
+  if (options.transparentBackground) render::engine->lightCopy = false;
+
+  return buff;
+}
+
 
 std::string removeExtension(std::string fullname) {
   size_t lastIndex = fullname.find_last_of(".");
@@ -69,124 +166,133 @@ void prepReadBuffer(bool transparentBG) {
 
 } // namespace
 
-/* Opens a FILE pipe to FFmpeg so that we can write to .mp4 video file.
- * 
- * @param name: The name of the .mp4 file, such as "teapot.mp4".
- * @return FILE* file descriptor.
- */
-FILE* openVideoFile(std::string filename, int fps) {
-  // Create the FFmpeg command
-  int w = view::bufferWidth;
-  int h = view::bufferHeight;
 
-  std::string cmd = "ffmpeg -r " + std::to_string(fps) + " "
-                    "-f rawvideo "    // expect raw video input
-                    "-pix_fmt rgba "  // expect RGBA input
-                    "-s " + std::to_string(w) + "x" + std::to_string(h) + " " // video dimensions
-                    "-i - "           // FFMpeg will read input from stdin
-                    "-threads 0 "     // use optimal number of threads
-                    "-preset fast "   // use fast encoding preset
-                    "-y "             // overwrite output file without asking
-                    "-pix_fmt yuv420p " // convert the pixel format to YUV420p for output
-                    "-crf 21 "        // set constant rate factor 
-                    "-vf vflip "      // buffer is from OpenGL, so need to vertically flip
-                    + filename;
+void saveImage(std::string name, unsigned char* buffer, int w, int h, int channels) {
+  checkInitialized();
+  /* Opens a FILE pipe to FFmpeg so that we can write to .mp4 video file.
+   *
+   * @param name: The name of the .mp4 file, such as "teapot.mp4".
+   * @return FILE* file descriptor.
+   */
+  FILE* openVideoFile(std::string filename, int fps) {
+    // Create the FFmpeg command
+    int w = view::bufferWidth;
+    int h = view::bufferHeight;
 
-  // Open a pipe to FFmpeg
+    std::string cmd = "ffmpeg -r " + std::to_string(fps) +
+                      " "
+                      "-f rawvideo "   // expect raw video input
+                      "-pix_fmt rgba " // expect RGBA input
+                      "-s " +
+                      std::to_string(w) + "x" + std::to_string(h) +
+                      " "                 // video dimensions
+                      "-i - "             // FFMpeg will read input from stdin
+                      "-threads 0 "       // use optimal number of threads
+                      "-preset fast "     // use fast encoding preset
+                      "-y "               // overwrite output file without asking
+                      "-pix_fmt yuv420p " // convert the pixel format to YUV420p for output
+                      "-crf 21 "          // set constant rate factor
+                      "-vf vflip "        // buffer is from OpenGL, so need to vertically flip
+                      + filename;
+
+    // Open a pipe to FFmpeg
 #ifdef _WIN32
-  FILE* ffmpeg = _popen(cmd.c_str(), "w");
+    FILE* ffmpeg = _popen(cmd.c_str(), "w");
 #else
-  FILE* ffmpeg = popen(cmd.c_str(), "w");
+    FILE* ffmpeg = popen(cmd.c_str(), "w");
 #endif
 
-  return ffmpeg;
-}
-
-/* Closes a FILE pipe to FFmpeg.
- *
- * @param fd: This file descriptor should have been obtained from a prior call
- *            to openVideoFile.
- * @return: -1 if closeVideoFile fails, not -1 if successful.
- */
-void closeVideoFile(FILE* fd) {
-  if (!fd) {
-    return;
+    return ffmpeg;
   }
+
+  /* Closes a FILE pipe to FFmpeg.
+   *
+   * @param fd: This file descriptor should have been obtained from a prior call
+   *            to openVideoFile.
+   * @return: -1 if closeVideoFile fails, not -1 if successful.
+   */
+  void closeVideoFile(FILE * fd) {
+    if (!fd) {
+      return;
+    }
 #ifdef _WIN32
-  _pclose(fd);
+    _pclose(fd);
 #else
-  pclose(fd);
-#endif
-}
-
-TetraFileDescriptors* openTetraVideoFileRG1G2B(std::string cmd, int fps) {
-  TetraFileDescriptors* tfds = new TetraFileDescriptors();
-  tfds->mode = SaveImageMode::RG1G2B;
-
-  std::string cmd_rg1g2b = cmd + ".mp4";
-#ifdef _WIN32
-  tfds->files[0] = _popen(cmd_rg1g2b.c_str(), "w");
-#else
-  tfds->files[0] = popen(cmd_rg1g2b.c_str(), "w");
-#endif
-
-  return tfds;
-}
-
-TetraFileDescriptors* openTetraVideoFileLMS_Q(std::string cmd, int fps) {
-  TetraFileDescriptors* tfds = new TetraFileDescriptors();
-  tfds->mode = SaveImageMode::LMS_Q;
-
-  std::string cmd_lms = cmd + "_LMS.mp4";
-  std::string cmd_q = cmd + "_Q.mp4";
-
-#ifdef _WIN32
-  tfds->files[0] = _popen(cmd_lms.c_str(), "w");
-  tfds->files[1] = _popen(cmd_q.c_str(), "w");
-#else
-  tfds->files[0] = popen(cmd_lms.c_str(), "w");
-  tfds->files[1] = popen(cmd_q.c_str(), "w");
-#endif
-
-  return tfds;
-}
-
-TetraFileDescriptors* openTetraVideoFileFourGray(std::string cmd, int fps) {
-  TetraFileDescriptors* tfds = new TetraFileDescriptors();
-  tfds->mode = SaveImageMode::FourGray;
-
-  for (int i = 0; i < 4; i++) {
-    std::string cmd_ch = cmd + "_" + std::to_string(i) + ".mp4";
-#ifdef _WIN32
-    tfds->files[i] = _popen(cmd_ch.c_str(), "w");
-#else
-    tfds->files[i] = popen(cmd_ch.c_str(), "w");
+    pclose(fd);
 #endif
   }
 
-  return tfds;
-}
+  TetraFileDescriptors* openTetraVideoFileRG1G2B(std::string cmd, int fps) {
+    TetraFileDescriptors* tfds = new TetraFileDescriptors();
+    tfds->mode = SaveImageMode::RG1G2B;
 
-TetraFileDescriptors* openTetraVideoFile(std::string filename, int fps, SaveImageMode mode) {
-  int w = view::bufferWidth;
-  int h = view::bufferHeight;
-  std::string rawName = removeExtension(filename);
+    std::string cmd_rg1g2b = cmd + ".mp4";
+#ifdef _WIN32
+    tfds->files[0] = _popen(cmd_rg1g2b.c_str(), "w");
+#else
+    tfds->files[0] = popen(cmd_rg1g2b.c_str(), "w");
+#endif
 
-  // Build FFMpeg command
-  std::string cmd = "ffmpeg -r " + std::to_string(fps) + " "
-                    "-f rawvideo "      // expect raw video input
-                    "-pix_fmt rgba "    // expect 4-channel input
-                    "-s " + std::to_string(w) + "x" + std::to_string(h) + " " // video dimensions
-                    "-i - "             // FFMpeg will read input from stdin
-                    "-threads 0 "       // use optimal number of threads
-                    "-preset fast "     // use fast encoding preset
-                    "-y "               // overwrite output file without asking
-                    "-pix_fmt yuv420p " // convert the pixel format to YUV420p for output
-                    "-crf 21 "          // set constant rate factor 
-                    "-vf \"vflip,null\" "  // buffer is from OpenGL, so need to vertically flip
-                    + rawName;
+    return tfds;
+  }
 
-  switch (mode) {
+  TetraFileDescriptors* openTetraVideoFileLMS_Q(std::string cmd, int fps) {
+    TetraFileDescriptors* tfds = new TetraFileDescriptors();
+    tfds->mode = SaveImageMode::LMS_Q;
+
+    std::string cmd_lms = cmd + "_LMS.mp4";
+    std::string cmd_q = cmd + "_Q.mp4";
+
+#ifdef _WIN32
+    tfds->files[0] = _popen(cmd_lms.c_str(), "w");
+    tfds->files[1] = _popen(cmd_q.c_str(), "w");
+#else
+    tfds->files[0] = popen(cmd_lms.c_str(), "w");
+    tfds->files[1] = popen(cmd_q.c_str(), "w");
+#endif
+
+    return tfds;
+  }
+
+  TetraFileDescriptors* openTetraVideoFileFourGray(std::string cmd, int fps) {
+    TetraFileDescriptors* tfds = new TetraFileDescriptors();
+    tfds->mode = SaveImageMode::FourGray;
+
+    for (int i = 0; i < 4; i++) {
+      std::string cmd_ch = cmd + "_" + std::to_string(i) + ".mp4";
+#ifdef _WIN32
+      tfds->files[i] = _popen(cmd_ch.c_str(), "w");
+#else
+      tfds->files[i] = popen(cmd_ch.c_str(), "w");
+#endif
+    }
+
+    return tfds;
+  }
+
+  TetraFileDescriptors* openTetraVideoFile(std::string filename, int fps, SaveImageMode mode) {
+    int w = view::bufferWidth;
+    int h = view::bufferHeight;
+    std::string rawName = removeExtension(filename);
+
+    // Build FFMpeg command
+    std::string cmd = "ffmpeg -r " + std::to_string(fps) +
+                      " "
+                      "-f rawvideo "   // expect raw video input
+                      "-pix_fmt rgba " // expect 4-channel input
+                      "-s " +
+                      std::to_string(w) + "x" + std::to_string(h) +
+                      " "                   // video dimensions
+                      "-i - "               // FFMpeg will read input from stdin
+                      "-threads 0 "         // use optimal number of threads
+                      "-preset fast "       // use fast encoding preset
+                      "-y "                 // overwrite output file without asking
+                      "-pix_fmt yuv420p "   // convert the pixel format to YUV420p for output
+                      "-crf 21 "            // set constant rate factor
+                      "-vf \"vflip,null\" " // buffer is from OpenGL, so need to vertically flip
+                      + rawName;
+
+    switch (mode) {
     case SaveImageMode::RG1G2B:
       return openTetraVideoFileRG1G2B(cmd, fps);
       break;
@@ -200,89 +306,87 @@ TetraFileDescriptors* openTetraVideoFile(std::string filename, int fps, SaveImag
       std::cout << "Invalid SaveImageMode" << std::endl;
       return nullptr;
       break;
+    }
   }
-}
 
-void closeTetraVideoFile(TetraFileDescriptors* tfds) {
-  for (int i = 0; i < tfds->numFiles; i++) {
-    if (tfds->files[i]) {
+  void closeTetraVideoFile(TetraFileDescriptors * tfds) {
+    for (int i = 0; i < tfds->numFiles; i++) {
+      if (tfds->files[i]) {
 #ifdef _WIN32
-      _pclose(tfds->files[i]);
+        _pclose(tfds->files[i]);
 #else
-      pclose(tfds->files[i]);
+        pclose(tfds->files[i]);
 #endif
-      tfds->files[i] = nullptr;
-    }
-  }
-  delete tfds;
-}
-
-void writeTetraVideoFramRG1G2B(TetraFileDescriptors* tfds, const std::vector<unsigned char>& buff,                               int w, int h) {
-  fwrite(&(buff.front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[0]); 
-}
-
-void writeTetraVideoFrameLMS_Q(TetraFileDescriptors* tfds, const std::vector<unsigned char>& buff,
-                               int w, int h) {
-
-  std::vector<unsigned char> buff_lms(4 * w * h);
-  std::vector<unsigned char> buff_q(4 * w * h);
-
-  for (int j = 0; j < h; j++) {
-    for (int i = 0; i < w; i++) {
-      int index = i + j * w;
-      for (int k = 0; k < 3; k++) {
-        buff_lms[4 * index + k] = buff[4 * index + k];
-        buff_q[4 * index + k] = buff[4 * index + 3];
+        tfds->files[i] = nullptr;
       }
-      
-      // Set alpha to 1
-      buff_lms[4 * index + 3] = std::numeric_limits<unsigned char>::max();
-      buff_q[4 * index + 3] = std::numeric_limits<unsigned char>::max();
     }
+    delete tfds;
   }
 
-  // Write to the FFmpeg pipes
-  fwrite(&(buff_lms.front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[0]);
-  fwrite(&(buff_q.front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[1]);
-}
+  void writeTetraVideoFramRG1G2B(TetraFileDescriptors * tfds, const std::vector<unsigned char>& buff, int w, int h) {
+    fwrite(&(buff.front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[0]);
+  }
 
-void writeTetraVideoFrameFourGray(TetraFileDescriptors* tfds, const std::vector<unsigned char>& buff,
-                                 int w, int h) {
-  std::vector<std::vector<unsigned char>> buff_chs(4, std::vector<unsigned char>(4 * w * h));
+  void writeTetraVideoFrameLMS_Q(TetraFileDescriptors * tfds, const std::vector<unsigned char>& buff, int w, int h) {
 
-  // Sorry about this for-loop ;-;
-  for (int j = 0; j < h; j++) {
-    for (int i = 0; i < w; i++) {
-      int index = i + j * w;
-      for (size_t ch = 0; ch < buff_chs.size(); ch++) {
-        // Copy the same value into each of the R, G, B channels
+    std::vector<unsigned char> buff_lms(4 * w * h);
+    std::vector<unsigned char> buff_q(4 * w * h);
+
+    for (int j = 0; j < h; j++) {
+      for (int i = 0; i < w; i++) {
+        int index = i + j * w;
         for (int k = 0; k < 3; k++) {
-          buff_chs[ch][4 * index + k] = buff[4 * index + ch];
+          buff_lms[4 * index + k] = buff[4 * index + k];
+          buff_q[4 * index + k] = buff[4 * index + 3];
         }
 
         // Set alpha to 1
-        buff_chs[ch][4 * index + 3] = std::numeric_limits<unsigned char>::max();
+        buff_lms[4 * index + 3] = std::numeric_limits<unsigned char>::max();
+        buff_q[4 * index + 3] = std::numeric_limits<unsigned char>::max();
       }
+    }
+
+    // Write to the FFmpeg pipes
+    fwrite(&(buff_lms.front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[0]);
+    fwrite(&(buff_q.front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[1]);
+  }
+
+  void writeTetraVideoFrameFourGray(TetraFileDescriptors * tfds, const std::vector<unsigned char>& buff, int w, int h) {
+    std::vector<std::vector<unsigned char>> buff_chs(4, std::vector<unsigned char>(4 * w * h));
+
+    // Sorry about this for-loop ;-;
+    for (int j = 0; j < h; j++) {
+      for (int i = 0; i < w; i++) {
+        int index = i + j * w;
+        for (size_t ch = 0; ch < buff_chs.size(); ch++) {
+          // Copy the same value into each of the R, G, B channels
+          for (int k = 0; k < 3; k++) {
+            buff_chs[ch][4 * index + k] = buff[4 * index + ch];
+          }
+
+          // Set alpha to 1
+          buff_chs[ch][4 * index + 3] = std::numeric_limits<unsigned char>::max();
+        }
+      }
+    }
+
+    // Write to the FFMpeg pipes
+    for (size_t ch = 0; ch < buff_chs.size(); ch++) {
+      fwrite(&(buff_chs[ch].front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[ch]);
     }
   }
 
-  // Write to the FFMpeg pipes
-  for (size_t ch = 0; ch < buff_chs.size(); ch++) {
-    fwrite(&(buff_chs[ch].front()), sizeof(unsigned char) * w * h * 4, 1, tfds->files[ch]);
-  }
-}
 
+  void writeTetraVideoFrame(TetraFileDescriptors * tfds) {
+    bool prevLighting = options::useFlatLighting;
+    options::useFlatLighting = true;
+    prepReadBuffer(true);
 
-void writeTetraVideoFrame(TetraFileDescriptors* tfds) {
-  bool prevLighting = options::useFlatLighting;
-  options::useFlatLighting = true;
-  prepReadBuffer(true);
+    int w = view::bufferWidth;
+    int h = view::bufferHeight;
+    std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
 
-  int w = view::bufferWidth;
-  int h = view::bufferHeight;
-  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
-
-  switch(tfds->mode) {
+    switch (tfds->mode) {
     case SaveImageMode::RG1G2B:
       writeTetraVideoFramRG1G2B(tfds, buff, w, h);
       break;
@@ -295,198 +399,200 @@ void writeTetraVideoFrame(TetraFileDescriptors* tfds) {
     default:
       std::cout << "Invalid SaveImageMode" << std::endl;
       break;
+    }
+
+    render::engine->useAltDisplayBuffer = false;
+    render::engine->lightCopy = false;
+    options::useFlatLighting = prevLighting;
   }
 
-  render::engine->useAltDisplayBuffer = false;
-  render::engine->lightCopy = false; 
-  options::useFlatLighting = prevLighting;
-}
 
+  void saveImage(std::string filename, unsigned char* buffer, int w, int h, int channels) {
 
-void saveImage(std::string filename, unsigned char* buffer, int w, int h, int channels) {
+    // our buffers are from openGL, so they are flipped
+    stbi_flip_vertically_on_write(1);
+    stbi_write_png_compression_level = 0;
 
-  // our buffers are from openGL, so they are flipped
-  stbi_flip_vertically_on_write(1);
-  stbi_write_png_compression_level = 0;
+    // Auto-detect filename
+    if (hasExtension(filename, ".png")) {
+      stbi_write_png(filename.c_str(), w, h, channels, buffer, channels * w);
+    } else if (hasExtension(filename, ".jpg") || hasExtension(filename, "jpeg")) {
+      stbi_write_jpg(filename.c_str(), w, h, channels, buffer, 100);
 
-  // Auto-detect filename
-  if (hasExtension(filename, ".png")) {
-    stbi_write_png(filename.c_str(), w, h, channels, buffer, channels * w);
-  } else if (hasExtension(filename, ".jpg") || hasExtension(filename, "jpeg")) {
-    stbi_write_jpg(filename.c_str(), w, h, channels, buffer, 100);
+      // TGA seems to display different on different machines: our fault or theirs?
+      // Both BMP and TGA need alpha channel stripped? bmp doesn't seem to work even with this
+      /*
+      } else if (hasExtension(name, ".tga")) {
+       stbi_write_tga(name.c_str(), w, h, channels, buffer);
+      } else if (hasExtension(name, ".bmp")) {
+       stbi_write_bmp(name.c_str(), w, h, channels, buffer);
+      */
 
-    // TGA seems to display different on different machines: our fault or theirs?
-    // Both BMP and TGA need alpha channel stripped? bmp doesn't seem to work even with this
-    /*
-    } else if (hasExtension(name, ".tga")) {
-     stbi_write_tga(name.c_str(), w, h, channels, buffer);
-    } else if (hasExtension(name, ".bmp")) {
-     stbi_write_bmp(name.c_str(), w, h, channels, buffer);
-    */
-
-  } else {
-    // Fall back on png
-    stbi_write_png(filename.c_str(), w, h, channels, buffer, channels * w);
-  }
-}
-
-
-/* Write a single video frame to .mp4 video file.
- *
- * @param fd: This file descriptor must have been obtained through a prior call
- *            to openVideoFile().
- * @param transparentBG: Whether or not transparency is enabled.
- * @return: -1 if writeVideoFrame fails, 0 on success.
- */
-void writeVideoFrame(FILE* fd, bool transparentBG) {
-  if (!fd) {
-    return;
+    } else {
+      error("unrecognized file extension, should be one of '.png', '.jpg', '.jpeg'. Got filename: " + name);
+      // Fall back on png
+      stbi_write_png(filename.c_str(), w, h, channels, buffer, channels * w);
+    }
   }
 
-  prepReadBuffer(transparentBG);
 
-  // These _should_ always be accurate
-  int w = view::bufferWidth;
-  int h = view::bufferHeight;
-  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
+  /* Write a single video frame to .mp4 video file.
+   *
+   * @param fd: This file descriptor must have been obtained through a prior call
+   *            to openVideoFile().
+   * @param transparentBG: Whether or not transparency is enabled.
+   * @return: -1 if writeVideoFrame fails, 0 on success.
+   */
+  void writeVideoFrame(FILE * fd, bool transparentBG) {
+    if (!fd) {
+      return;
+    }
 
-  // Set alpha to 1
-  if (!transparentBG) {
-    for (int j = 0; j < h; j++) {
-      for (int i = 0; i < w; i++) {
-        int ind = i + j * w;
-        buff[4 * ind + 3] = std::numeric_limits<unsigned char>::max();
+    prepReadBuffer(transparentBG);
+
+    // These _should_ always be accurate
+    int w = view::bufferWidth;
+    int h = view::bufferHeight;
+    std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
+
+    // Set alpha to 1
+    if (!transparentBG) {
+      for (int j = 0; j < h; j++) {
+        for (int i = 0; i < w; i++) {
+          int ind = i + j * w;
+          buff[4 * ind + 3] = std::numeric_limits<unsigned char>::max();
+        }
       }
     }
+
+    // Write to the FFmpeg pipe
+    fwrite(&(buff.front()), sizeof(unsigned char) * w * h * 4, 1, fd);
+
+    render::engine->useAltDisplayBuffer = false;
+    if (transparentBG) render::engine->lightCopy = false;
   }
 
-  // Write to the FFmpeg pipe
-  fwrite(&(buff.front()), sizeof(unsigned char) * w * h * 4, 1, fd);
 
-  render::engine->useAltDisplayBuffer = false;
-  if (transparentBG) render::engine->lightCopy = false;
-}
+  void screenshot(std::string filename, bool transparentBG) {
+    prepReadBuffer(transparentBG);
 
+    // these _should_ always be accurate
+    int w = view::bufferWidth;
+    int h = view::bufferHeight;
+    std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
 
-void screenshot(std::string filename, bool transparentBG) {
-  prepReadBuffer(transparentBG);
-
-  // these _should_ always be accurate
-  int w = view::bufferWidth;
-  int h = view::bufferHeight;
-  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
-
-  // Set alpha to 1
-  if (!transparentBG) {
-    for (int j = 0; j < h; j++) {
-      for (int i = 0; i < w; i++) {
-        int ind = i + j * w;
-        buff[4 * ind + 3] = std::numeric_limits<unsigned char>::max();
+    // Set alpha to 1
+    if (!transparentBG) {
+      for (int j = 0; j < h; j++) {
+        for (int i = 0; i < w; i++) {
+          int ind = i + j * w;
+          buff[4 * ind + 3] = std::numeric_limits<unsigned char>::max();
+        }
       }
     }
+
+    // Save to file
+    saveImage(filename, &(buff.front()), w, h, 4);
+
+    render::engine->useAltDisplayBuffer = false;
+    if (transparentBG) render::engine->lightCopy = false;
   }
 
-  // Save to file
-  saveImage(filename, &(buff.front()), w, h, 4);
+  void screenshot(bool transparentBG) {
 
-  render::engine->useAltDisplayBuffer = false;
-  if (transparentBG) render::engine->lightCopy = false;
-}
+    char buff[50];
+    snprintf(buff, 50, "screenshot_%06zu%s", state::screenshotInd, options::screenshotExtension.c_str());
+    std::string defaultName(buff);
 
-void screenshot(bool transparentBG) {
+    screenshot(defaultName, options);
 
-  char buff[50];
-  snprintf(buff, 50, "screenshot_%06zu%s", state::screenshotInd, options::screenshotExtension.c_str());
-  std::string defaultName(buff);
-
-  // only pngs can be written with transparency
-  if (!hasExtension(options::screenshotExtension, ".png")) {
-    transparentBG = false;
+    state::screenshotInd++;
   }
 
-  screenshot(defaultName, transparentBG);
+  void screenshot(bool transparentBG) {
+    ScreenshotOptions options;
+    options.transparentBackground = transparentBG;
+    screenshot(options);
+  }
 
-  state::screenshotInd++;
-}
+  void screenshot(const char* filename) { screenshot(std::string(filename), true); }
 
-void resetScreenshotIndex() { state::screenshotInd = 0; }
+  void resetScreenshotIndex() { state::screenshotInd = 0; }
 
-std::vector<unsigned char> screenshotToBuffer(bool transparentBG) {
-  prepReadBuffer(transparentBG);
+  std::vector<unsigned char> screenshotToBuffer(bool transparentBG) {
+    prepReadBuffer(transparentBG);
 
-  // these _should_ always be accurate
-  int w = view::bufferWidth;
-  int h = view::bufferHeight;
-  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
+    // these _should_ always be accurate
+    int w = view::bufferWidth;
+    int h = view::bufferHeight;
+    std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
 
-  // Set alpha to 1
-  if (!transparentBG) {
-    for (int j = 0; j < h; j++) {
-      for (int i = 0; i < w; i++) {
-        int ind = i + j * w;
-        buff[4 * ind + 3] = std::numeric_limits<unsigned char>::max();
+    // Set alpha to 1
+    if (!transparentBG) {
+      for (int j = 0; j < h; j++) {
+        for (int i = 0; i < w; i++) {
+          int ind = i + j * w;
+          buff[4 * ind + 3] = std::numeric_limits<unsigned char>::max();
+        }
       }
     }
+
+    render::engine->useAltDisplayBuffer = false;
+    if (transparentBG) render::engine->lightCopy = false;
+
+    return buff;
   }
 
-  render::engine->useAltDisplayBuffer = false;
-  if (transparentBG) render::engine->lightCopy = false;
+  void saveImageLMS_Q(std::string filename, const std::vector<unsigned char>& buff, int w, int h) {
 
-  return buff;
-}
-
-void saveImageLMS_Q(std::string filename, const std::vector<unsigned char>& buff, 
-                    int w, int h) {
-
-  std::vector<unsigned char> buff_lms(3 * w * h); 
-  std::vector<unsigned char> buff_q(w * h);
-  
-  for (int j = 0; j < h; j++) {
-    for (int i = 0; i < w; i++) {
-      int index = i + j * w;
-      buff_lms[3 * index + 0] = buff[4 * index + 0];
-      buff_lms[3 * index + 1] = buff[4 * index + 1];
-      buff_lms[3 * index + 2] = buff[4 * index + 2];
-      buff_q[index] = buff[4 * index + 3];
-    }
-  }
-
-  std::string rawName = removeExtension(filename);
-  saveImage(rawName + "_LMS.png", &(buff_lms.front()), w, h, 3);
-  saveImage(rawName + "_Q.png", &(buff_q.front()), w, h, 1);
-}
-
-void saveImageFourGray(std::string filename, const std::vector<unsigned char>& buff, 
-                       int w, int h) {
-
-  std::string rawName = removeExtension(filename);
-  for (int ch = 0; ch < 4; ch++) {
-    std::vector<unsigned char> buff_ch(w * h);
+    std::vector<unsigned char> buff_lms(3 * w * h);
+    std::vector<unsigned char> buff_q(w * h);
 
     for (int j = 0; j < h; j++) {
       for (int i = 0; i < w; i++) {
         int index = i + j * w;
-        buff_ch[index] = buff[4 * index + ch];
+        buff_lms[3 * index + 0] = buff[4 * index + 0];
+        buff_lms[3 * index + 1] = buff[4 * index + 1];
+        buff_lms[3 * index + 2] = buff[4 * index + 2];
+        buff_q[index] = buff[4 * index + 3];
       }
     }
 
-    saveImage(rawName + "_" + std::to_string(ch) + ".png", &(buff_ch.front()), w, h, 1);
+    std::string rawName = removeExtension(filename);
+    saveImage(rawName + "_LMS.png", &(buff_lms.front()), w, h, 3);
+    saveImage(rawName + "_Q.png", &(buff_q.front()), w, h, 1);
   }
-}
 
-void rasterizeTetra(std::string filename, SaveImageMode mode) { 
-  // Set flat lighting for correct screenshot
-  bool prevLighting = options::useFlatLighting;
-  options::useFlatLighting = true;
+  void saveImageFourGray(std::string filename, const std::vector<unsigned char>& buff, int w, int h) {
 
-  prepReadBuffer(true);
+    std::string rawName = removeExtension(filename);
+    for (int ch = 0; ch < 4; ch++) {
+      std::vector<unsigned char> buff_ch(w * h);
 
-  int w = view::bufferWidth;
-  int h = view::bufferHeight;
-  std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
+      for (int j = 0; j < h; j++) {
+        for (int i = 0; i < w; i++) {
+          int index = i + j * w;
+          buff_ch[index] = buff[4 * index + ch];
+        }
+      }
 
-  // Save to file
-  switch (mode) {
+      saveImage(rawName + "_" + std::to_string(ch) + ".png", &(buff_ch.front()), w, h, 1);
+    }
+  }
+
+  void rasterizeTetra(std::string filename, SaveImageMode mode) {
+    // Set flat lighting for correct screenshot
+    bool prevLighting = options::useFlatLighting;
+    options::useFlatLighting = true;
+
+    prepReadBuffer(true);
+
+    int w = view::bufferWidth;
+    int h = view::bufferHeight;
+    std::vector<unsigned char> buff = render::engine->displayBufferAlt->readBuffer();
+
+    // Save to file
+    switch (mode) {
     case SaveImageMode::RG1G2B:
       saveImage(filename, &(buff.front()), w, h, 4);
       break;
@@ -499,24 +605,22 @@ void rasterizeTetra(std::string filename, SaveImageMode mode) {
     default:
       std::cout << "Invalid SaveImageMode" << std::endl;
       break;
+    }
+
+    render::engine->useAltDisplayBuffer = false;
+    render::engine->lightCopy = false;
+    options::useFlatLighting = prevLighting;
   }
 
-  render::engine->useAltDisplayBuffer = false;
-  render::engine->lightCopy = false;
-  options::useFlatLighting = prevLighting;
-} 
+  void rasterizeTetra(SaveImageMode mode) {
+    char buff[50];
+    snprintf(buff, 50, "tetra_%06zu%s", state::rasterizeTetraInd, options::screenshotExtension.c_str());
+    std::string defaultName(buff);
 
-void rasterizeTetra(SaveImageMode mode) {
-  char buff[50];
-  snprintf(buff, 50, "tetra_%06zu%s", state::rasterizeTetraInd, options::screenshotExtension.c_str());
-  std::string defaultName(buff);
+    rasterizeTetra(defaultName, mode);
 
-  rasterizeTetra(defaultName, mode);
-
-  state::rasterizeTetraInd++;
-}
-
-
+    state::rasterizeTetraInd++;
+  }
 
 
 } // namespace polyscope

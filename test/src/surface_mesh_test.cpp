@@ -112,11 +112,11 @@ TEST_F(PolyscopeTest, SurfaceMeshPick) {
   auto psMesh = registerTriangleMesh();
 
   // Don't bother trying to actually click on anything, but make sure this doesn't crash
-  polyscope::pick::evaluatePickQuery(77, 88);
+  polyscope::pickAtBufferInds(glm::ivec2(77, 88));
 
   // Do it again with edges enabled
   psMesh->setEdgeWidth(1.0);
-  polyscope::pick::evaluatePickQuery(77, 88);
+  polyscope::pickAtBufferInds(glm::ivec2(77, 88));
 
   polyscope::removeAllStructures();
 }
@@ -202,6 +202,12 @@ TEST_F(PolyscopeTest, SurfaceMeshColorTexture) {
       psMesh->addTextureColorQuantity("tColor", *qParam, dimX, dimY, colorsTex, polyscope::ImageOrigin::UpperLeft);
   qColor->setEnabled(true);
 
+  polyscope::show(3);
+
+  // test options
+  qColor->setFilterMode(polyscope::FilterMode::Nearest);
+  polyscope::show(3);
+
   // make sure the by-name adder also works
   polyscope::SurfaceTextureColorQuantity* qColor2 =
       psMesh->addTextureColorQuantity("tColor2", "param", dimX, dimY, colorsTex, polyscope::ImageOrigin::UpperLeft);
@@ -216,6 +222,22 @@ TEST_F(PolyscopeTest, SurfaceMeshScalarVertex) {
   auto q1 = psMesh->addVertexScalarQuantity("vScalar", vScalar);
   q1->setEnabled(true);
   polyscope::show(3);
+
+  // try some options
+  q1->setIsolinesEnabled(true);
+  polyscope::show(3);
+  q1->setIsolineStyle(polyscope::IsolineStyle::Contour);
+  polyscope::show(3);
+
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, SurfaceMeshScalarCategoricalVertex) {
+  auto psMesh = registerTriangleMesh();
+  std::vector<double> vScalar(psMesh->nVertices(), 7.);
+  auto q1 = psMesh->addVertexScalarQuantity("vScalar", vScalar, polyscope::DataType::CATEGORICAL);
+  q1->setEnabled(true);
+  polyscope::show(3);
   polyscope::removeAllStructures();
 }
 
@@ -223,6 +245,15 @@ TEST_F(PolyscopeTest, SurfaceMeshScalarFace) {
   auto psMesh = registerTriangleMesh();
   std::vector<double> fScalar(psMesh->nFaces(), 8.);
   auto q2 = psMesh->addFaceScalarQuantity("fScalar", fScalar);
+  q2->setEnabled(true);
+  polyscope::show(3);
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, SurfaceMeshScalarCategoricalFace) {
+  auto psMesh = registerTriangleMesh();
+  std::vector<double> fScalar(psMesh->nFaces(), 8.);
+  auto q2 = psMesh->addFaceScalarQuantity("fScalar", fScalar, polyscope::DataType::CATEGORICAL);
   q2->setEnabled(true);
   polyscope::show(3);
   polyscope::removeAllStructures();
@@ -240,10 +271,31 @@ TEST_F(PolyscopeTest, SurfaceMeshScalarEdge) {
   polyscope::removeAllStructures();
 }
 
+TEST_F(PolyscopeTest, SurfaceMeshScalarCategoricalEdge) {
+  auto psMesh = registerTriangleMesh();
+  size_t nEdges = 6;
+  std::vector<double> eScalar(nEdges, 9.);
+  std::vector<size_t> ePerm = {5, 3, 1, 2, 4, 0};
+  psMesh->setEdgePermutation(ePerm);
+  auto q3 = psMesh->addEdgeScalarQuantity("eScalar", eScalar, polyscope::DataType::CATEGORICAL);
+  q3->setEnabled(true);
+  polyscope::show(3);
+  polyscope::removeAllStructures();
+}
+
 TEST_F(PolyscopeTest, SurfaceMeshScalarHalfedge) {
   auto psMesh = registerTriangleMesh();
   std::vector<double> heScalar(psMesh->nHalfedges(), 10.);
   auto q4 = psMesh->addHalfedgeScalarQuantity("heScalar", heScalar);
+  q4->setEnabled(true);
+  polyscope::show(3);
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, SurfaceMeshScalarCategoricalHalfedge) {
+  auto psMesh = registerTriangleMesh();
+  std::vector<double> heScalar(psMesh->nHalfedges(), 10.);
+  auto q4 = psMesh->addHalfedgeScalarQuantity("heScalar", heScalar, polyscope::DataType::CATEGORICAL);
   q4->setEnabled(true);
   polyscope::show(3);
   polyscope::removeAllStructures();
@@ -267,6 +319,15 @@ TEST_F(PolyscopeTest, SurfaceMeshScalarCorner) {
   auto psMesh = registerTriangleMesh();
   std::vector<double> cornerScalar(psMesh->nCorners(), 10.);
   auto q4 = psMesh->addCornerScalarQuantity("cornerScalar", cornerScalar);
+  q4->setEnabled(true);
+  polyscope::show(3);
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, SurfaceMeshScalarCategoricalCorner) {
+  auto psMesh = registerTriangleMesh();
+  std::vector<double> cornerScalar(psMesh->nCorners(), 10.);
+  auto q4 = psMesh->addCornerScalarQuantity("cornerScalar", cornerScalar, polyscope::DataType::CATEGORICAL);
   q4->setEnabled(true);
   polyscope::show(3);
   polyscope::removeAllStructures();
@@ -298,12 +359,74 @@ TEST_F(PolyscopeTest, SurfaceMeshScalarTexture) {
   polyscope::SurfaceTextureScalarQuantity* qScalar =
       psMesh->addTextureScalarQuantity("tScalar", *qParam, dimX, dimY, valuesTex, polyscope::ImageOrigin::UpperLeft);
   qScalar->setEnabled(true);
+  polyscope::show(3);
+
+  // test options
+  qScalar->setFilterMode(polyscope::FilterMode::Nearest);
+  polyscope::show(3);
 
   // make sure the by-name adder also works
   polyscope::SurfaceTextureScalarQuantity* qScalar2 =
       psMesh->addTextureScalarQuantity("tScalar2", "param", dimX, dimY, valuesTex, polyscope::ImageOrigin::UpperLeft);
 
   polyscope::show(3);
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, SurfaceMeshScalarCategoricalTexture) {
+  auto psMesh = registerTriangleMesh();
+
+  std::vector<glm::vec2> vals(psMesh->nCorners(), {1., 2.});
+  auto qParam = psMesh->addParameterizationQuantity("param", vals);
+
+  size_t dimX = 10;
+  size_t dimY = 15;
+  std::vector<float> valuesTex(dimX * dimY, 0.77);
+  polyscope::SurfaceTextureScalarQuantity* qScalar = psMesh->addTextureScalarQuantity(
+      "tScalar", *qParam, dimX, dimY, valuesTex, polyscope::ImageOrigin::UpperLeft, polyscope::DataType::CATEGORICAL);
+  qScalar->setEnabled(true);
+  polyscope::show(3);
+
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, SurfaceMeshScalarTransparency) {
+
+  auto psMesh = registerTriangleMesh();
+
+  { // vertex quantity
+    std::vector<double> vScalar(psMesh->nVertices(), 7.);
+    auto qVert = psMesh->addVertexScalarQuantity("vScalar", vScalar);
+    psMesh->setTransparencyQuantity(qVert);
+    polyscope::show(3);
+  }
+
+  // make sure clear works
+  psMesh->clearTransparencyQuantity();
+  polyscope::show(3);
+
+  { // face quantity
+    std::vector<double> fScalar(psMesh->nFaces(), 8.);
+    auto qFace = psMesh->addFaceScalarQuantity("fScalar", fScalar);
+    psMesh->setTransparencyQuantity(qFace);
+    polyscope::show(3);
+  }
+
+  { // corner quantity
+    std::vector<double> cornerScalar(psMesh->nCorners(), 10.);
+    auto qCorner = psMesh->addCornerScalarQuantity("cornerScalar", cornerScalar);
+    psMesh->setTransparencyQuantity(qCorner);
+    polyscope::show(3);
+  }
+
+  // edges, halfedges, and textures are currently not supported
+
+  // Change transparency settings
+  polyscope::options::transparencyMode = polyscope::TransparencyMode::Simple;
+  polyscope::show(3);
+  polyscope::options::transparencyMode = polyscope::TransparencyMode::None;
+  polyscope::show(3);
+
   polyscope::removeAllStructures();
 }
 
@@ -372,6 +495,10 @@ TEST_F(PolyscopeTest, SurfaceMeshVertexParam) {
   q1->setStyle(polyscope::ParamVizStyle::LOCAL_CHECK);
   polyscope::show(3);
   q1->setStyle(polyscope::ParamVizStyle::LOCAL_RAD);
+  polyscope::show(3);
+
+  // create the curve network
+  q1->createCurveNetworkFromSeams();
   polyscope::show(3);
 
   polyscope::removeAllStructures();
@@ -482,7 +609,7 @@ TEST_F(PolyscopeTest, SimpleTriangleMeshPick) {
   auto psMesh = registerSimpleTriangleMesh();
 
   // Don't bother trying to actually click on anything, but make sure this doesn't crash
-  polyscope::pick::evaluatePickQuery(77, 88);
+  polyscope::pickAtBufferInds(glm::ivec2(77, 88));
 
   polyscope::removeAllStructures();
 }

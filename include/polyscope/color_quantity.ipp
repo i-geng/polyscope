@@ -4,10 +4,15 @@ namespace polyscope {
 
 template <typename QuantityT>
 ColorQuantity<QuantityT>::ColorQuantity(QuantityT& quantity_, const std::vector<glm::vec3>& colors_)
-    : quantity(quantity_), colors(&quantity, quantity.uniquePrefix() + "colors", colorsData), colorsData(colors_) {}
+    : quantity(quantity_), colors(&quantity, quantity.uniquePrefix() + "colors", colorsData), colorsData(colors_) {
+  colors.checkInvalidValues();
+}
 
 template <typename QuantityT>
 void ColorQuantity<QuantityT>::buildColorUI() {}
+
+template <typename QuantityT>
+void ColorQuantity<QuantityT>::buildColorOptionsUI() {}
 
 template <typename QuantityT>
 void ColorQuantity<QuantityT>::setColorUniforms(render::ShaderProgram& p) {}

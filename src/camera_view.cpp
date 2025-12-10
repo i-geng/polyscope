@@ -29,6 +29,13 @@ CameraView::CameraView(std::string name, const CameraParameters& params_)
       widgetThickness(uniquePrefix() + "#widgetThickness", 0.02),
       widgetColor(uniquePrefix() + "#widgetColor", glm::vec3{0., 0., 0.}) {
 
+  if (options::warnForInvalidValues) {
+    if (!params.isfinite()) {
+      warning("Invalid +-inf or NaN values detected",
+              "in camera view parameters: " + name + "\n(set warnForInvalidValues=false to disable)");
+    }
+  }
+
   updateObjectSpaceBounds();
 }
 
@@ -124,10 +131,32 @@ void CameraView::drawPick() {
 
   // Set uniforms
   setStructureUniforms(*pickFrameProgram);
+  pickFrameProgram->setUniform("u_vertPickRadius", 0.);
   render::engine->setCameraUniforms(*pickFrameProgram);
   render::engine->setLightUniforms(*pickFrameProgram);
 
   pickFrameProgram->draw();
+
+  for (auto& x : quantities) {
+    x.second->drawPick();
+  }
+  for (auto& x : floatingQuantities) {
+    x.second->drawPick();
+  }
+}
+
+
+void CameraView::drawPickDelayed() {
+  if (!isEnabled()) {
+    return;
+  }
+
+  for (auto& x : quantities) {
+    x.second->drawPickDelayed();
+  }
+  for (auto& x : floatingQuantities) {
+    x.second->drawPickDelayed();
+  }
 }
 
 void CameraView::prepare() {
@@ -324,7 +353,25 @@ void CameraView::geometryChanged() {
   QuantityStructure<CameraView>::refresh();
 }
 
-void CameraView::buildPickUI(size_t localPickID) {
+CameraViewPickResult CameraView::interpretPickResult(const PickResult& rawResult) {
+
+  if (rawResult.structure != this) {
+    // caller must ensure that the PickResult belongs to this structure
+    // by checking the structure pointer or name
+    exception("called interpretPickResult(), but the pick result is not from this structure");
+  }
+
+  CameraViewPickResult result;
+
+  // currently nothing
+
+  return result;
+}
+
+void CameraView::buildPickUI(const PickResult& rawResult) {
+
+  CameraViewPickResult result = interpretPickResult(rawResult);
+
   ImGui::Text("center: %s", to_string(params.getPosition()).c_str());
   ImGui::Text("look dir: %s", to_string(params.getLookDir()).c_str());
   ImGui::Text("up dir: %s", to_string(params.getUpDir()).c_str());
@@ -339,10 +386,11 @@ void CameraView::buildPickUI(size_t localPickID) {
   ImGui::Indent(20.);
 
   // Build GUI to show the quantities
+  // TODO this is inconsistently supported for other structures
   ImGui::Columns(2);
   ImGui::SetColumnWidth(0, ImGui::GetWindowWidth() / 3);
   for (auto& x : quantities) {
-    x.second->buildPickUI(localPickID);
+    x.second->buildPickUI(rawResult.localIndex);
   }
 
   ImGui::Indent(-20.);
@@ -367,7 +415,7 @@ void CameraView::buildCustomUI() {
 
 void CameraView::buildCustomOptionsUI() {
 
-  ImGui::PushItemWidth(150);
+  ImGui::PushItemWidth(150 * options::uiScale);
 
   if (widgetFocalLengthUpper == -777) widgetFocalLengthUpper = 2. * (*widgetFocalLength.get().getValuePtr());
   if (ImGui::SliderFloat("widget focal length", widgetFocalLength.get().getValuePtr(), 0, widgetFocalLengthUpper,

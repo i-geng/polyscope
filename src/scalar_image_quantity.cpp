@@ -77,7 +77,7 @@ void ScalarImageQuantity::showFullscreen() {
 
   // Set uniforms
   this->setScalarUniforms(*fullscreenProgram);
-  fullscreenProgram->setUniform("u_transparency", getTransparency());
+  fullscreenProgram->setUniform("u_textureTransparency", getTransparency());
 
   fullscreenProgram->draw();
 
@@ -90,7 +90,7 @@ void ScalarImageQuantity::renderIntermediate() {
 
   // Set uniforms
   this->setScalarUniforms(*fullscreenProgram);
-  fullscreenProgram->setUniform("u_transparency", getTransparency());
+  fullscreenProgram->setUniform("u_textureTransparency", getTransparency());
 
   // render to the intermediate texture
   render::engine->pushBindFramebufferForRendering(*framebufferIntermediate);
@@ -114,7 +114,9 @@ void ScalarImageQuantity::showInImGuiWindow() {
 
   // here we always use the same ImVec2 UV coords below, because the texture order is always openGL convention after the
   // intermediate render pass
-  ImGui::Image(textureIntermediateRendered->getNativeHandle(), ImVec2(w, h), ImVec2(0, 1), ImVec2(1, 0));
+  ImGui::Image((ImTextureID)(intptr_t)textureIntermediateRendered->getNativeHandle(), ImVec2(w, h), ImVec2(0, 1),
+               ImVec2(1, 0));
+  render::engine->preserveResourceUntilImguiFrameCompletes(textureIntermediateRendered);
 
 
   ImGui::End();
@@ -131,7 +133,7 @@ void ScalarImageQuantity::showInBillboard(glm::vec3 center, glm::vec3 upVec, glm
 
   // set uniforms
   parent.setStructureUniforms(*billboardProgram);
-  billboardProgram->setUniform("u_transparency", getTransparency());
+  billboardProgram->setUniform("u_textureTransparency", getTransparency());
   billboardProgram->setUniform("u_billboardCenter", center);
   billboardProgram->setUniform("u_billboardUp", upVec);
   billboardProgram->setUniform("u_billboardRight", rightVec);

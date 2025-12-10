@@ -6,6 +6,7 @@
 #include "polyscope/color_management.h"
 #include "polyscope/colors.h"
 #include "polyscope/persistent_value.h"
+#include "polyscope/pick.h"
 #include "polyscope/point_cloud_quantity.h"
 #include "polyscope/polyscope.h"
 #include "polyscope/render/engine.h"
@@ -40,6 +41,10 @@ struct QuantityTypeHelper<PointCloud> {
   typedef PointCloudQuantity type;
 };
 
+struct PointCloudPickResult {
+  int64_t index;
+};
+
 class PointCloud : public QuantityStructure<PointCloud> {
 public:
   // === Member functions ===
@@ -52,12 +57,13 @@ public:
   // Build the imgui display
   virtual void buildCustomUI() override;
   virtual void buildCustomOptionsUI() override;
-  virtual void buildPickUI(size_t localPickID) override;
+  virtual void buildPickUI(const PickResult& result) override;
 
   // Standard structure overrides
   virtual void draw() override;
   virtual void drawDelayed() override;
   virtual void drawPick() override;
+  virtual void drawPickDelayed() override;
   virtual void updateObjectSpaceBounds() override;
   virtual std::string typeName() override;
   virtual void refresh() override;
@@ -108,12 +114,22 @@ public:
   void setPointRadiusQuantity(std::string name, bool autoScale = true);
   void clearPointRadiusQuantity();
 
+  // === Set transparency alpha from a scalar quantity
+  // effect is multiplicative with other transparency values
+  // values are clamped to [0,1]
+  void setTransparencyQuantity(PointCloudScalarQuantity* quantity);
+  void setTransparencyQuantity(std::string name);
+  void clearTransparencyQuantity();
+
   // The points that make up this point cloud
   // Normally, the values are stored here. But if the render buffer
   // is being manually updated, they will live only in the render buffer
   // and this will be empty.
   size_t nPoints();
   glm::vec3 getPointPosition(size_t iPt);
+
+  // get data related to picking/selection
+  PointCloudPickResult interpretPickResult(const PickResult& result);
 
   // Misc data
   static const std::string structureTypeName;
@@ -182,11 +198,17 @@ private:
 
   // Manage varying point size
   // which (scalar) quantity to set point size from
+  // TODO make these PersistentValue<>?
   std::string pointRadiusQuantityName = ""; // empty string means none
   bool pointRadiusQuantityAutoscale = true;
   PointCloudScalarQuantity& resolvePointRadiusQuantity(); // helper
-};
 
+  // Manage per-element transparency
+  // which (scalar) quantity to set point size from
+  // TODO make these PersistentValue<>?
+  std::string transparencyQuantityName = "";               // empty string means none
+  PointCloudScalarQuantity& resolveTransparencyQuantity(); // helper
+};
 
 // Shorthand to add a point cloud to polyscope
 template <class T>

@@ -34,8 +34,10 @@ void buildErrorUI(std::string message, bool fatal) {
   ImVec2 errorTextSize = ImGui::CalcTextSize(message.c_str());
   ImVec2 errorModalSize(std::max(view::windowWidth / 5.0f, std::min(errorTextSize.x + 50, view::windowWidth / 2.0f)),
                         0);
+  ImVec2 errorModalPos((view::windowWidth - errorModalSize.x) / 2, view::windowHeight / 3);
 
   ImGui::SetNextWindowSize(errorModalSize);
+  ImGui::SetNextWindowPos(errorModalPos, ImGuiCond_Always);
   ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(170. / 255., 0, 0, 1.0));
   if (ImGui::BeginPopupModal(errorPopupString.c_str(), NULL, ImGuiWindowFlags_NoMove)) {
 
@@ -106,8 +108,10 @@ void buildWarningUI(std::string warningBaseString, std::string warningDetailStri
       std::max(warningBaseTextSize.y, std::max(warningDetailTextSize.y, warningRepeatTextSize.y)));
   ImVec2 warningModalSize(
       std::max(view::windowWidth / 5.0f, std::min(warningMaxTextSize.x + 50, view::windowWidth / 2.0f)), 0);
+  ImVec2 warningModalPos((view::windowWidth - warningModalSize.x) / 2, view::windowHeight / 3);
 
   ImGui::SetNextWindowSize(warningModalSize);
+  ImGui::SetNextWindowPos(warningModalPos, ImGuiCond_Always);
   ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(190. / 255., 166. / 255., 0, 1.0));
   if (ImGui::BeginPopupModal("WARNING", NULL, ImGuiWindowFlags_NoMove)) {
 
@@ -170,7 +174,7 @@ void buildWarningUI(std::string warningBaseString, std::string warningDetailStri
     }
 
     // Nice button sizing
-    float buttonWidth = 120;
+    float buttonWidth = 120 * options::uiScale;
     float buttonOffset = (warningModalSize.x - buttonWidth) / 2.0;
     buttonOffset = std::max(buttonOffset, 0.0f);
     doIndent = buttonOffset > 0;
@@ -199,8 +203,9 @@ void buildWarningUI(std::string warningBaseString, std::string warningDetailStri
 } // namespace
 
 
-void info(std::string message) {
-  if (options::verbosity > 0) {
+void info(std::string message) { info(0, message); }
+void info(int verbosityLevel, std::string message) {
+  if (options::verbosity > verbosityLevel) {
     std::cout << options::printPrefix << message << std::endl;
   }
 }
@@ -208,6 +213,12 @@ void info(std::string message) {
 void error(std::string message) {
   if (options::verbosity > 0) {
     std::cout << options::printPrefix << "[ERROR] " << message << std::endl;
+  }
+
+  // Enter a modal UI loop showing the error
+  if (options::displayMessagePopups && isInitialized() && !isHeadless()) {
+    auto func = std::bind(buildErrorUI, message, false);
+    pushContext(func, false);
   }
 
   if (options::errorsThrowExceptions) {
@@ -231,15 +242,25 @@ void terminatingError(std::string message) {
     std::cout << options::printPrefix << "[ERROR] " << message << std::endl;
   }
 
-  auto func = std::bind(buildErrorUI, message, true);
-  pushContext(func, false);
+  // Enter a modal UI loop showing the warning
+  if (options::displayMessagePopups && isInitialized() && !isHeadless()) {
+    auto func = std::bind(buildErrorUI, message, true);
+    pushContext(func, false);
+  }
 
   // Quit the program
-  shutdown();
+  shutdown(true);
   std::exit(-1);
 }
 
 void warning(std::string baseMessage, std::string detailMessage) {
+
+  // print to stdout
+  if (options::verbosity > 0) {
+    std::cout << options::printPrefix << "[WARNING] " << baseMessage;
+    if (detailMessage != "") std::cout << " --- " << detailMessage;
+    std::cout << std ::endl;
+  }
 
   // Look for a message with the same name
   bool found = false;
@@ -266,19 +287,18 @@ void showDelayedWarnings() {
     showingWarning = true;
     WarningMessage& currMessage = warningMessages.front();
 
-    if (options::verbosity > 0) {
-      std::cout << options::printPrefix << "[WARNING] " << currMessage.baseMessage;
-      if (currMessage.detailMessage != "") std::cout << " --- " << currMessage.detailMessage;
-      if (currMessage.repeatCount > 0) std::cout << " (and " << currMessage.repeatCount << " similar messages).";
-      std::cout << std ::endl;
+    // Enter a modal UI loop showing the warning
+    if (options::displayMessagePopups && isInitialized() && !isHeadless()) {
+      auto func =
+          std::bind(buildWarningUI, currMessage.baseMessage, currMessage.detailMessage, currMessage.repeatCount);
+      pushContext(func, false);
     }
-
-    auto func = std::bind(buildWarningUI, currMessage.baseMessage, currMessage.detailMessage, currMessage.repeatCount);
-    pushContext(func, false);
 
     warningMessages.pop_front();
     showingWarning = false;
   }
 }
+
+void clearMessages() { warningMessages.clear(); }
 
 } // namespace polyscope

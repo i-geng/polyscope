@@ -10,6 +10,7 @@
 #include "glm/glm.hpp"
 
 #include "polyscope/persistent_value.h"
+#include "polyscope/pick.h"
 #include "polyscope/render/engine.h"
 #include "polyscope/transformation_gizmo.h"
 #include "polyscope/weak_handle.h"
@@ -41,8 +42,9 @@ public:
 
   // == Render the the structure on screen
   virtual void draw() = 0;
-  virtual void drawDelayed() = 0;
   virtual void drawPick() = 0;
+  virtual void drawDelayed() = 0; // a second render pass
+  virtual void drawPickDelayed() = 0;
 
   // == Add rendering rules
   std::vector<std::string> addStructureRules(std::vector<std::string> initRules);
@@ -54,10 +56,11 @@ public:
   virtual void buildStructureOptionsUI(); // overridden by structure quantities to add to the options menu
   virtual void buildQuantitiesUI();       // build quantities, if they exist. Overridden by QuantityStructure.
   virtual void buildSharedStructureUI();  // Draw any UI elements shared between all instances of the structure
-  virtual void buildPickUI(size_t localPickID) = 0; // Draw pick UI elements when index localPickID is selected
+  virtual void buildPickUI(const PickResult& result) = 0; // Draw pick UI elements based on a selection result
 
   // = Identifying data
-  const std::string name; // should be unique amongst registered structures with this type
+  const std::string name;        // should be unique amongst registered structures with this type
+  const std::string subtypeName; // specific type name, like "Point Cloud"
   std::string uniquePrefix();
 
   std::string getName() { return name; }; // used by pybind to access the name property
@@ -110,6 +113,9 @@ public:
 
   Structure* setIgnoreSlicePlane(std::string name, bool newValue);
   bool getIgnoreSlicePlane(std::string name);
+
+  Structure* setTransformGizmoEnabled(bool newVal);
+  bool getTransformGizmoEnabled();
 
 protected:
   // = State

@@ -8,19 +8,19 @@
 #include <thread>
 
 #include "imgui.h"
+#include "implot.h"
 
+#include "polyscope/light.h"
 #include "polyscope/options.h"
 #include "polyscope/pick.h"
 #include "polyscope/render/engine.h"
+#include "polyscope/utilities.h"
 #include "polyscope/view.h"
-#include "polyscope/light.h"
 
 #include "stb_image.h"
 
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
-
-#include "backends/imgui_impl_opengl3.h"
 
 namespace polyscope {
 
@@ -35,6 +35,7 @@ namespace {
 // initialization.
 struct ContextEntry {
   ImGuiContext* context;
+  ImPlotContext* plotContext;
   std ::function<void()> callback;
   bool drawDefaultUI;
 };
@@ -45,13 +46,13 @@ bool redrawNextFrame = true;
 bool unshowRequested = false;
 
 // Some state about imgui windows to stack them
-float imguiStackMargin = 10;
-float lastWindowHeightPolyscope = 200;
-float lastWindowHeightUser = 200;
-float leftWindowsWidth = 305;
-float rightWindowsWidth = 500;
+constexpr float INITIAL_LEFT_WINDOWS_WIDTH = 305;
+constexpr float INITIAL_RIGHT_WINDOWS_WIDTH = 500;
 
-auto lastMainLoopIterTime = std::chrono::steady_clock::now();
+auto prevMainLoopTime = std::chrono::steady_clock::now();
+float rollingMainLoopDurationMicrosec = 0.;
+float rollingMainLoopEMA = 0.05;
+float lastMainLoopDurationMicrosec = 0.;
 auto frameZeroTime = std::chrono::steady_clock::now();
 auto frameStartTime = std::chrono::steady_clock::now();
 int frameIndex = -1;
@@ -70,11 +71,11 @@ void readPrefsFile() {
 
       // Set values
       // Do some basic validation on the sizes first to work around bugs with bogus values getting written to init file
-      if (prefsJSON.count("windowWidth") > 0) {
+      if (view::windowWidth == -1 && prefsJSON.count("windowWidth") > 0) { // only load if not already set
         int val = prefsJSON["windowWidth"];
         if (val >= 64 && val < 10000) view::windowWidth = val;
       }
-      if (prefsJSON.count("windowHeight") > 0) {
+      if (view::windowHeight == -1 && prefsJSON.count("windowHeight") > 0) { // only load if not already set
         int val = prefsJSON["windowHeight"];
         if (val >= 64 && val < 10000) view::windowHeight = val;
       }
@@ -85,6 +86,10 @@ void readPrefsFile() {
       if (prefsJSON.count("windowPosY") > 0) {
         int val = prefsJSON["windowPosY"];
         if (val >= 0 && val < 10000) view::initWindowPosY = val;
+      }
+      if (prefsJSON.count("uiScale") > 0) {
+        float val = prefsJSON["uiScale"];
+        if (val >= 0.25 && val <= 4.0) options::uiScale = val;
       }
     }
 
@@ -102,6 +107,7 @@ void writePrefsFile() {
   std::tie(posX, posY) = render::engine->getWindowPos();
   int windowWidth = view::windowWidth;
   int windowHeight = view::windowHeight;
+  float uiScale = options::uiScale;
 
   // Validate values. Don't write the prefs file if any of these values are obviously bogus (this seems to happen at
   // least on Windows when the application is minimzed)
@@ -110,19 +116,34 @@ void writePrefsFile() {
   valuesValid &= posY >= 0 && posY < 10000;
   valuesValid &= windowWidth >= 64 && windowWidth < 10000;
   valuesValid &= windowHeight >= 64 && windowHeight < 10000;
+  valuesValid &= uiScale >= 0.25 && uiScale <= 4.;
   if (!valuesValid) return;
 
   // Build json object
+  // clang-format off
   json prefsJSON = {
-      {"windowWidth", windowWidth},
-      {"windowHeight", windowHeight},
+      {"windowWidth", windowWidth}, 
+      {"windowHeight", windowHeight}, 
       {"windowPosX", posX},
-      {"windowPosY", posY},
+      {"windowPosY", posY},         
+      {"uiScale", uiScale},
   };
+  // clang-format on
 
   // Write out json object
   std::ofstream o(prefsFilename);
   o << std::setw(4) << prefsJSON << std::endl;
+}
+
+void setInitialWindowWidths() {
+  internal::leftWindowsWidth = INITIAL_LEFT_WINDOWS_WIDTH * options::uiScale;
+  internal::rightWindowsWidth = INITIAL_RIGHT_WINDOWS_WIDTH * options::uiScale;
+}
+
+void ensureWindowWidthsSet() {
+  if (internal::leftWindowsWidth <= 0. || internal::rightWindowsWidth <= 0.) {
+    setInitialWindowWidths();
+  }
 }
 
 // Helper to get a structure map
@@ -132,6 +153,62 @@ std::map<std::string, std::unique_ptr<Structure>>& getStructureMapCreateIfNeeded
     state::structures[typeName] = std::map<std::string, std::unique_ptr<Structure>>();
   }
   return state::structures[typeName];
+}
+
+void sleepForFramerate() {
+  // If needed, block the program execution to hit the intended framerate
+  // (if not used, the render loop may busy-run maxed out at 1000+ fps and waste resources)
+
+  // WARNING:  similar logic duplicated in this function and in shouldSkipFrameForFramerate()
+
+  if (options::maxFPS != -1) {
+    auto currTime = std::chrono::steady_clock::now();
+    long microsecPerLoop = 1000000 / options::maxFPS;
+    microsecPerLoop = (95 * microsecPerLoop) / 100; // give a little slack so we actually hit target fps
+    while (std::chrono::duration_cast<std::chrono::microseconds>(currTime - prevMainLoopTime).count() <
+           microsecPerLoop) {
+      std::this_thread::yield();
+      currTime = std::chrono::steady_clock::now();
+    }
+  }
+}
+
+bool shouldSkipFrameForFramerate() {
+  // Returns true if the current frame should be skipped to maintain the framerate
+
+  // NOTE: right now this logic is pretty simplistic, it just allows the frame to happen if 95% of the frametime has
+  // already passed. This might lead to choppiness in application loops which run at e.g. 150% of the target FPS, or
+  // miss opporunities for better timing if frameTick() is called in extremely tight loops.
+  //
+  // In the future we could write a fancier version of this function implementing smarter policies using
+  // rollingMainLoopDurationMicrosec
+
+  // WARNING: similar logic duplicated in this function and in sleepForFramerate()
+
+  if (options::maxFPS <= 0) return false;
+
+  auto currTime = std::chrono::steady_clock::now();
+  float microsecPerLoop = 1000000 / options::maxFPS;
+  microsecPerLoop = (95 * microsecPerLoop) / 100; // give a little slack so we actually hit target fps
+  // NOTE: we could incorporate rollingMainLoopDurationMicrosec here, but since the loop time is recorded at the
+  // beginning of each frame, the previous frame's time is _already_ incorporated into the timing.
+  auto nextLoopStartTimeToHitTarget =
+      prevMainLoopTime + std::chrono::microseconds(static_cast<int64_t>(std::round(microsecPerLoop)));
+
+  return currTime < nextLoopStartTimeToHitTarget;
+}
+
+void markLastFrameTime() {
+  auto currTime = std::chrono::steady_clock::now();
+
+  // update the prev & rolling average frame time
+  lastMainLoopDurationMicrosec =
+      std::chrono::duration_cast<std::chrono::microseconds>(currTime - prevMainLoopTime).count();
+  rollingMainLoopDurationMicrosec =
+      (1. - rollingMainLoopEMA) * rollingMainLoopDurationMicrosec + rollingMainLoopEMA * lastMainLoopDurationMicrosec;
+
+  // mark the time of this frame
+  prevMainLoopTime = currTime;
 }
 
 // Helper to get a light map
@@ -155,11 +232,15 @@ void init(std::string backend) {
     return;
   }
 
+  info(5, "Initializing Polyscope");
+
   state::backend = backend;
 
   if (options::usePrefsFile) {
     readPrefsFile();
   }
+  if (view::windowWidth == -1) view::windowWidth = view::defaultWindowWidth;
+  if (view::windowHeight == -1) view::windowHeight = view::defaultWindowHeight;
 
   // Initialize the rendering engine
   render::initializeRenderEngine(backend);
@@ -170,7 +251,7 @@ void init(std::string backend) {
 
   // Create an initial context based context. Note that calling show() never actually uses this context, because it
   // pushes a new one each time. But using frameTick() may use this context.
-  contextStack.push_back(ContextEntry{ImGui::GetCurrentContext(), nullptr, true});
+  contextStack.push_back(ContextEntry{ImGui::GetCurrentContext(), ImPlot::GetCurrentContext(), nullptr, true});
 
   view::invalidateView();
 
@@ -188,13 +269,17 @@ bool isInitialized() { return state::initialized; }
 
 void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
 
+  // WARNING: code duplicated here and in screenshot.cpp
+
   // Create a new context and push it on to the stack
-  ImGuiContext* newContext = ImGui::CreateContext(render::engine->getImGuiGlobalFontAtlas());
+  ImGuiContext* newContext = ImGui::CreateContext();
+  ImPlotContext* newPlotContext = ImPlot::CreateContext();
   ImGuiIO& oldIO = ImGui::GetIO(); // used to GLFW + OpenGL data to the new IO object
 #ifdef IMGUI_HAS_DOCK
   ImGuiPlatformIO& oldPlatformIO = ImGui::GetPlatformIO();
 #endif
   ImGui::SetCurrentContext(newContext);
+  ImPlot::SetCurrentContext(newPlotContext);
 #ifdef IMGUI_HAS_DOCK
   // Propagate GLFW window handle to new context
   ImGui::GetMainViewport()->PlatformHandle = oldPlatformIO.Viewports[0]->PlatformHandle;
@@ -202,16 +287,15 @@ void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
   ImGui::GetIO().BackendPlatformUserData = oldIO.BackendPlatformUserData;
   ImGui::GetIO().BackendRendererUserData = oldIO.BackendRendererUserData;
 
-  if (options::configureImGuiStyleCallback) {
-    options::configureImGuiStyleCallback();
-  }
+  render::engine->configureImGui();
 
-  contextStack.push_back(ContextEntry{newContext, callbackFunction, drawDefaultUI});
+
+  contextStack.push_back(ContextEntry{newContext, newPlotContext, callbackFunction, drawDefaultUI});
 
   if (contextStack.size() > 50) {
     // Catch bugs with nested show()
     exception("Uh oh, polyscope::show() was recusively MANY times (depth > 50), this is probably a bug. Perhaps "
-              "you are accidentally calling show every time polyscope::userCallback executes?");
+              "you are accidentally calling show() every time polyscope::userCallback executes?");
   };
 
   // Make sure the window is visible
@@ -220,19 +304,7 @@ void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
   // Re-enter main loop until the context has been popped
   size_t currentContextStackSize = contextStack.size();
   while (contextStack.size() >= currentContextStackSize) {
-    // The windowing system will let the main loop busy-loop on some platforms. Make sure that doesn't happen.
-    if (options::maxFPS != -1) {
-      auto currTime = std::chrono::steady_clock::now();
-      long microsecPerLoop = 1000000 / options::maxFPS;
-      microsecPerLoop = (95 * microsecPerLoop) / 100; // give a little slack so we actually hit target fps
-      while (std::chrono::duration_cast<std::chrono::microseconds>(currTime - lastMainLoopIterTime).count() <
-             microsecPerLoop) {
-        std::this_thread::yield();
-        currTime = std::chrono::steady_clock::now();
-      }
-    }
-    lastMainLoopIterTime = std::chrono::steady_clock::now();
-
+    sleepForFramerate();
     mainLoopIteration();
 
     // auto-exit if the window is closed
@@ -241,17 +313,21 @@ void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
     }
   }
 
+  // WARNING: code duplicated here and in screenshot.cpp
   // Workaround overzealous ImGui assertion before destroying any inner context
   // https://github.com/ocornut/imgui/pull/7175
   ImGui::SetCurrentContext(newContext);
+  ImPlot::SetCurrentContext(newPlotContext);
   ImGui::GetIO().BackendPlatformUserData = nullptr;
   ImGui::GetIO().BackendRendererUserData = nullptr;
 
+  ImPlot::DestroyContext(newPlotContext);
   ImGui::DestroyContext(newContext);
 
   // Restore the previous context, if there was one
   if (!contextStack.empty()) {
     ImGui::SetCurrentContext(contextStack.back().context);
+    ImPlot::SetCurrentContext(contextStack.back().plotContext);
   }
 }
 
@@ -300,7 +376,7 @@ void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefault
     } else {
       state::isEvenFrame = false;
     }
-    
+
     if (!options::drawEvenFrameFirst) {
       state::isEvenFrame = !state::isEvenFrame;
     }
@@ -312,7 +388,7 @@ void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefault
     } else if (!state::isEvenFrame && options::blackOutOddFrames) {
       drawBlank = true;
     }
-    
+
     mainLoopIterationAbsoluteClock(drawBlank);
 
     // auto-exit if the window is closed
@@ -346,6 +422,7 @@ void popContext() {
 ImGuiContext* getCurrentContext() { return contextStack.empty() ? nullptr : contextStack.back().context; }
 
 void frameTick() {
+  checkInitialized();
 
   // Do some sanity-checking around control flow and use of frameTick() / show()
   if (contextStack.size() > 1) {
@@ -355,14 +432,42 @@ void frameTick() {
     exception("You called frameTick() while a previous call was in the midst of executing. Do not re-enter frameTick() "
               "or call it recursively.");
   }
-  frameTickStack++;
 
-  // Make sure we're initialized and visible
-  checkInitialized();
+
+  // == Logic for frame tick FPS limits
+  bool savedVsyncValue = false;         // see below
+  bool needToRestoreVSyncValue = false; // need to save this, the setting could change during mainLoopIteration()
+  switch (options::frameTickLimitFPSMode) {
+  case LimitFPSMode::IgnoreLimits:
+    // Ugly workaround to preserve the API:
+    // We want vsync to be disabled if we're ignoring fps limits (otherwise the platform will potentially block on
+    // render swap to match the displays refresh rate). But it's currently a bool read in the render call and I don't
+    // want to change that API. So we temporarily set it to false and restore the value after. ONEDAY: when we have a
+    // major version update, change the API on the vsync setting to make this unecessary
+    savedVsyncValue = options::enableVSync;
+    options::enableVSync = false;
+    needToRestoreVSyncValue = true;
+    break;
+  case LimitFPSMode::BlockToHitTarget:
+    sleepForFramerate();
+    break;
+  case LimitFPSMode::SkipFramesToHitTarget:
+    if (shouldSkipFrameForFramerate()) {
+      return;
+    }
+    break;
+  }
+
+
+  frameTickStack++;
   render::engine->showWindow();
 
-  // All-imporant main loop iteration
   mainLoopIteration();
+
+  if (needToRestoreVSyncValue) {
+    // restore saved value, see note above
+    options::enableVSync = savedVsyncValue;
+  }
 
   frameTickStack--;
 }
@@ -376,7 +481,8 @@ void fullFrameTick() {
     exception("Do not call fullFrameTick() while show() is already looping the main loop.");
   }
   if (frameTickStack > 0) {
-    exception("You called fullFrameTick() while a previous call was in the midst of executing. Do not re-enter fullFrameTick() "
+    exception("You called fullFrameTick() while a previous call was in the midst of executing. Do not re-enter "
+              "fullFrameTick() "
               "or call it recursively.");
   }
   frameTickStack++;
@@ -433,47 +539,25 @@ float dragDistSinceLastRelease = 0.0;
 void processInputEvents() {
   ImGuiIO& io = ImGui::GetIO();
 
+  // RECALL: in ImGUI language, on MacOS "ctrl" == "cmd", so all the options
+  // below referring to ctrl really mean cmd on MacOS.
+
   // If any mouse button is pressed, trigger a redraw
   if (ImGui::IsAnyMouseDown()) {
     requestRedraw();
   }
 
   bool widgetCapturedMouse = false;
-  for (WeakHandle<Widget> wHandle : state::widgets) {
-    if (wHandle.isValid()) {
-      Widget& w = wHandle.get();
-      widgetCapturedMouse = w.interact();
-      if (widgetCapturedMouse) {
-        break;
-      }
-    }
-  }
 
   // Handle scroll events for 3D view
   if (state::doDefaultMouseInteraction) {
-    if (!io.WantCaptureMouse && !widgetCapturedMouse) {
-      double xoffset = io.MouseWheelH;
-      double yoffset = io.MouseWheel;
 
-      if (xoffset != 0 || yoffset != 0) {
-        requestRedraw();
-
-        // On some setups, shift flips the scroll direction, so take the max
-        // scrolling in any direction
-        double maxScroll = xoffset;
-        if (std::abs(yoffset) > std::abs(xoffset)) {
-          maxScroll = yoffset;
-        }
-
-        // Pass camera commands to the camera
-        if (maxScroll != 0.0) {
-          bool scrollClipPlane = io.KeyShift;
-
-          if (scrollClipPlane) {
-            view::processClipPlaneShift(maxScroll);
-          } else {
-            view::processZoom(maxScroll);
-          }
+    for (WeakHandle<Widget> wHandle : state::widgets) {
+      if (wHandle.isValid()) {
+        Widget& w = wHandle.get();
+        widgetCapturedMouse = w.interact();
+        if (widgetCapturedMouse) {
+          break;
         }
       }
     }
@@ -481,58 +565,103 @@ void processInputEvents() {
     // === Mouse inputs
     if (!io.WantCaptureMouse && !widgetCapturedMouse) {
 
-      // Process drags
-      bool dragLeft = ImGui::IsMouseDragging(0);
-      bool dragRight = !dragLeft && ImGui::IsMouseDragging(1); // left takes priority, so only one can be true
-      if (dragLeft || dragRight) {
+      { // Process scroll via "mouse wheel" (which might be a touchpad)
+        double xoffset = io.MouseWheelH;
+        double yoffset = io.MouseWheel;
 
-        glm::vec2 dragDelta{io.MouseDelta.x / view::windowWidth, -io.MouseDelta.y / view::windowHeight};
-        dragDistSinceLastRelease += std::abs(dragDelta.x);
-        dragDistSinceLastRelease += std::abs(dragDelta.y);
+        if (xoffset != 0 || yoffset != 0) {
+          requestRedraw();
 
-        // exactly one of these will be true
-        bool isRotate = dragLeft && !io.KeyShift && !io.KeyCtrl;
-        bool isTranslate = (dragLeft && io.KeyShift && !io.KeyCtrl) || dragRight;
-        bool isDragZoom = dragLeft && io.KeyShift && io.KeyCtrl;
+          // On some setups, shift flips the scroll direction, so take the max
+          // scrolling in any direction
+          double maxScroll = xoffset;
+          if (std::abs(yoffset) > std::abs(xoffset)) {
+            maxScroll = yoffset;
+          }
 
-        if (isDragZoom) {
-          view::processZoom(dragDelta.y * 5);
-        }
-        if (isRotate) {
-          glm::vec2 currPos{io.MousePos.x / view::windowWidth,
-                            (view::windowHeight - io.MousePos.y) / view::windowHeight};
-          currPos = (currPos * 2.0f) - glm::vec2{1.0, 1.0};
-          if (std::abs(currPos.x) <= 1.0 && std::abs(currPos.y) <= 1.0) {
-            view::processRotate(currPos - 2.0f * dragDelta, currPos);
+          // Pass camera commands to the camera
+          if (maxScroll != 0.0) {
+            bool scrollClipPlane = io.KeyShift && !io.KeyCtrl;
+            bool relativeZoom = io.KeyShift && io.KeyCtrl;
+
+            if (scrollClipPlane) {
+              view::processClipPlaneShift(maxScroll);
+            } else {
+              view::processZoom(maxScroll, relativeZoom);
+            }
           }
         }
-        if (isTranslate) {
-          view::processTranslate(dragDelta);
+      }
+
+
+      { // Process drags
+        bool dragLeft = ImGui::IsMouseDragging(0);
+        bool dragRight = !dragLeft && ImGui::IsMouseDragging(1); // left takes priority, so only one can be true
+        if (dragLeft || dragRight) {
+
+          glm::vec2 dragDelta{io.MouseDelta.x / view::windowWidth, -io.MouseDelta.y / view::windowHeight};
+          dragDistSinceLastRelease += std::abs(dragDelta.x);
+          dragDistSinceLastRelease += std::abs(dragDelta.y);
+
+          // exactly one of these will be true
+          bool isRotate = dragLeft && !io.KeyShift && !io.KeyCtrl;
+          bool isTranslate = (dragLeft && io.KeyShift && !io.KeyCtrl) || dragRight;
+          bool isDragZoom = dragLeft && io.KeyShift && io.KeyCtrl;
+
+          if (isDragZoom) {
+            view::processZoom(dragDelta.y * 5, true);
+          }
+          if (isRotate) {
+            glm::vec2 currPos{io.MousePos.x / view::windowWidth,
+                              (view::windowHeight - io.MousePos.y) / view::windowHeight};
+            currPos = (currPos * 2.0f) - glm::vec2{1.0, 1.0};
+            if (std::abs(currPos.x) <= 1.0 && std::abs(currPos.y) <= 1.0) {
+              view::processRotate(currPos - 2.0f * dragDelta, currPos);
+            }
+          }
+          if (isTranslate) {
+            view::processTranslate(dragDelta);
+          }
         }
       }
 
-      // Click picks
-      float dragIgnoreThreshold = 0.01;
-      if (ImGui::IsMouseReleased(0)) {
+      { // Click picks
+        float dragIgnoreThreshold = 0.01;
+        bool anyModifierHeld = io.KeyShift || io.KeyCtrl || io.KeyAlt;
+        bool ctrlShiftHeld = io.KeyShift && io.KeyCtrl;
 
-        // Don't pick at the end of a long drag
-        if (dragDistSinceLastRelease < dragIgnoreThreshold) {
-          ImVec2 p = ImGui::GetMousePos();
-          std::pair<Structure*, size_t> pickResult = pick::pickAtScreenCoords(glm::vec2{p.x, p.y});
-          pick::setSelection(pickResult);
+        if (!anyModifierHeld && io.MouseReleased[0]) {
+
+          // Don't pick at the end of a long drag
+          if (dragDistSinceLastRelease < dragIgnoreThreshold) {
+            glm::vec2 screenCoords{io.MousePos.x, io.MousePos.y};
+            PickResult pickResult = pickAtScreenCoords(screenCoords);
+            setSelection(pickResult);
+          }
         }
 
-        // Reset the drag distance after any release
-        dragDistSinceLastRelease = 0.0;
-      }
-      // Clear pick
-      if (ImGui::IsMouseReleased(1)) {
-        if (dragDistSinceLastRelease < dragIgnoreThreshold) {
-          pick::resetSelection();
+        // Clear pick
+        if (!anyModifierHeld && io.MouseReleased[1]) {
+          if (dragDistSinceLastRelease < dragIgnoreThreshold) {
+            resetSelection();
+          }
+          dragDistSinceLastRelease = 0.0;
         }
-        dragDistSinceLastRelease = 0.0;
+
+        // Double-click or Ctrl-shift left-click to set new center
+        if (io.MouseDoubleClicked[0] || (ctrlShiftHeld && io.MouseReleased[0])) {
+          if (dragDistSinceLastRelease < dragIgnoreThreshold) {
+            glm::vec2 screenCoords{io.MousePos.x, io.MousePos.y};
+            view::processSetCenter(screenCoords);
+          }
+        }
       }
     }
+  }
+
+  // Reset the drag distance after any release
+  if (io.MouseReleased[0]) {
+    dragDistSinceLastRelease = 0.0;
   }
 
   // === Key-press inputs
@@ -549,7 +678,6 @@ void renderSlicePlanes() {
 }
 
 void renderScene() {
-  processLazyProperties();
 
   render::engine->applyTransparencySettings();
 
@@ -594,9 +722,10 @@ void renderScene() {
       if (!isRedraw) {
         // Only on first pass (kinda weird, but works out, and doesn't really matter)
         renderSlicePlanes();
-        render::engine->applyTransparencySettings();
-        drawStructuresDelayed();
       }
+
+      render::engine->applyTransparencySettings();
+      drawStructuresDelayed();
 
       // Composite the result of this pass in to the result buffer
       render::engine->sceneBufferFinal->bind();
@@ -644,18 +773,20 @@ void purgeWidgets() {
 }
 
 void userGuiBegin() {
+  ensureWindowWidthsSet();
 
   ImVec2 userGuiLoc;
   if (options::userGuiIsOnRightSide) {
     // right side
-    userGuiLoc = ImVec2(view::windowWidth - (rightWindowsWidth + imguiStackMargin), imguiStackMargin);
-    ImGui::SetNextWindowSize(ImVec2(rightWindowsWidth, 0.));
+    userGuiLoc = ImVec2(view::windowWidth - (internal::rightWindowsWidth + internal::imguiStackMargin),
+                        internal::imguiStackMargin);
+    ImGui::SetNextWindowSize(ImVec2(internal::rightWindowsWidth, 0.));
   } else {
     // left side
     if (options::buildDefaultGuiPanels) {
-      userGuiLoc = ImVec2(leftWindowsWidth + 3 * imguiStackMargin, imguiStackMargin);
+      userGuiLoc = ImVec2(internal::leftWindowsWidth + 3 * internal::imguiStackMargin, internal::imguiStackMargin);
     } else {
-      userGuiLoc = ImVec2(imguiStackMargin, imguiStackMargin);
+      userGuiLoc = ImVec2(internal::imguiStackMargin, internal::imguiStackMargin);
     }
   }
 
@@ -668,10 +799,15 @@ void userGuiBegin() {
 void userGuiEnd() {
 
   if (options::userGuiIsOnRightSide) {
-    rightWindowsWidth = ImGui::GetWindowWidth();
-    lastWindowHeightUser = imguiStackMargin + ImGui::GetWindowHeight();
+    internal::rightWindowsWidth = INITIAL_RIGHT_WINDOWS_WIDTH * options::uiScale;
+    internal::lastWindowHeightUser =
+        internal::imguiStackMargin + ImGui::GetWindowHeight(); // TODO using deprecated function
+    internal::lastRightSideFreeX = view::windowWidth - internal::imguiStackMargin;
+    internal::lastRightSideFreeY = internal::lastWindowHeightUser;
   } else {
-    lastWindowHeightUser = 0;
+    internal::lastWindowHeightUser = 0;
+    internal::lastRightSideFreeX = view::windowWidth - internal::imguiStackMargin;
+    internal::lastRightSideFreeY = 0;
   }
   ImGui::End();
   ImGui::PopID();
@@ -680,11 +816,12 @@ void userGuiEnd() {
 } // namespace
 
 void buildPolyscopeGui() {
+  ensureWindowWidthsSet();
 
   // Create window
   static bool showPolyscopeWindow = true;
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, imguiStackMargin));
-  ImGui::SetNextWindowSize(ImVec2(leftWindowsWidth, 0.));
+  ImGui::SetNextWindowPos(ImVec2(internal::imguiStackMargin, internal::imguiStackMargin));
+  ImGui::SetNextWindowSize(ImVec2(internal::leftWindowsWidth, 0.));
 
   ImGui::Begin("Polyscope", &showPolyscopeWindow);
 
@@ -694,7 +831,10 @@ void buildPolyscopeGui() {
   ImGui::SameLine();
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1.0f, 0.0f));
   if (ImGui::Button("Screenshot")) {
-    screenshot(options::screenshotTransparency);
+    ScreenshotOptions options;
+    options.transparentBackground = options::screenshotTransparency;
+    options.includeUI = options::screenshotWithImGuiUI;
+    screenshot(options);
   }
   ImGui::SameLine();
   if (ImGui::ArrowButton("##Option", ImGuiDir_Down)) {
@@ -704,6 +844,7 @@ void buildPolyscopeGui() {
   if (ImGui::BeginPopup("ScreenshotOptionsPopup")) {
 
     ImGui::Checkbox("with transparency", &options::screenshotTransparency);
+    ImGui::Checkbox("with UI", &options::screenshotWithImGuiUI);
 
     if (ImGui::BeginMenu("file format")) {
       if (ImGui::MenuItem(".png", NULL, options::screenshotExtension == ".png")) options::screenshotExtension = ".png";
@@ -721,20 +862,24 @@ void buildPolyscopeGui() {
   }
   if (ImGui::IsItemHovered()) {
 
-    ImGui::SetNextWindowPos(ImVec2(2 * imguiStackMargin + leftWindowsWidth, imguiStackMargin));
+    ImGui::SetNextWindowPos(
+        ImVec2(2 * internal::imguiStackMargin + internal::leftWindowsWidth, internal::imguiStackMargin));
     ImGui::SetNextWindowSize(ImVec2(0., 0.));
 
     // clang-format off
 		ImGui::Begin("Controls", NULL, ImGuiWindowFlags_NoTitleBar);
-		ImGui::TextUnformatted("View Navigation:");
-			ImGui::TextUnformatted("      Rotate: [left click drag]");
+    ImGui::TextUnformatted("View Navigation:");
+			ImGui::TextUnformatted("   Rotate: [left click drag]");
 			ImGui::TextUnformatted("   Translate: [shift] + [left click drag] OR [right click drag]");
-			ImGui::TextUnformatted("        Zoom: [scroll] OR [ctrl] + [shift] + [left click drag]");
-			ImGui::TextUnformatted("   Use [ctrl-c] and [ctrl-v] to save and restore camera poses");
-			ImGui::TextUnformatted("     via the clipboard.");
-		ImGui::TextUnformatted("\nMenu Navigation:");
+			ImGui::TextUnformatted("   Zoom: [scroll] OR [ctrl/cmd] + [shift] + [left click drag]");
+			ImGui::TextUnformatted("   To set the view orbit center, double-click OR hold");
+			ImGui::TextUnformatted("     [ctrl/cmd] + [shift] and [left click] in the scene.");
+			ImGui::TextUnformatted("   To zoom towards the center, hold [ctrl/cmd] + [shift] and scroll.");
+			ImGui::TextUnformatted("   Save and restore camera poses via the system clipboard with");
+			ImGui::TextUnformatted("     [ctrl/cmd-c] and [ctrl/cmd-v].");
+      ImGui::TextUnformatted("\nMenu Navigation:");
 			ImGui::TextUnformatted("   Menu headers with a '>' can be clicked to collapse and expand.");
-			ImGui::TextUnformatted("   Use [ctrl] + [left click] to manually enter any numeric value");
+			ImGui::TextUnformatted("   Use [ctrl/cmd] + [left click] to manually enter any numeric value");
 			ImGui::TextUnformatted("     via the keyboard.");
 			ImGui::TextUnformatted("   Press [space] to dismiss popup dialogs.");
 		ImGui::TextUnformatted("\nSelection:");
@@ -755,11 +900,43 @@ void buildPolyscopeGui() {
   ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
   if (ImGui::TreeNode("Render")) {
 
-    // fps
-    ImGui::Text("Rolling: %.1f ms/frame (%.1f fps)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-    ImGui::Text("Last: %.1f ms/frame (%.1f fps)", ImGui::GetIO().DeltaTime * 1000.f, 1.f / ImGui::GetIO().DeltaTime);
+    // fps display
+    ImGui::Text("Rolling: %.1f ms/frame (%.1f fps)", 1e-3f * rollingMainLoopDurationMicrosec,
+                1.e6f / rollingMainLoopDurationMicrosec);
+    ImGui::Text("Last: %.1f ms/frame (%.1f fps)", 1e-3f * lastMainLoopDurationMicrosec,
+                1.e6f / lastMainLoopDurationMicrosec);
 
-    ImGui::PushItemWidth(40);
+    bool isFrameTickShow = frameTickStack > 0;
+    if (isFrameTickShow) {
+      // build a little combo box to pick fps mode
+      constexpr std::array<LimitFPSMode, 3> limitFPSModeVals = {
+          LimitFPSMode::IgnoreLimits, LimitFPSMode::BlockToHitTarget, LimitFPSMode::SkipFramesToHitTarget};
+      auto to_string = [](LimitFPSMode x) -> std::string {
+        switch (x) {
+        case LimitFPSMode::IgnoreLimits:
+          return "ignore limits";
+        case LimitFPSMode::BlockToHitTarget:
+          return "block to hit target";
+        case LimitFPSMode::SkipFramesToHitTarget:
+          return "skip frames to hit target";
+        }
+        return ""; // unreachable
+      };
+      if (ImGui::BeginCombo("fps mode##frame tick limit fps mode", to_string(options::frameTickLimitFPSMode).c_str())) {
+        for (LimitFPSMode x : limitFPSModeVals) {
+          if (ImGui::Selectable(to_string(x).c_str(), options::frameTickLimitFPSMode == x)) {
+            options::frameTickLimitFPSMode = x;
+            ImGui::SetItemDefaultFocus();
+          }
+        }
+        ImGui::EndCombo();
+      }
+    }
+
+    ImGui::BeginDisabled(isFrameTickShow && options::frameTickLimitFPSMode == LimitFPSMode::IgnoreLimits);
+
+    ImGui::PushItemWidth(40 * options::uiScale);
+
     if (ImGui::InputInt("max fps", &options::maxFPS, 0)) {
       if (options::maxFPS < 1 && options::maxFPS != -1) {
         options::maxFPS = -1;
@@ -769,6 +946,8 @@ void buildPolyscopeGui() {
     ImGui::PopItemWidth();
     ImGui::SameLine();
     ImGui::Checkbox("vsync", &options::enableVSync);
+
+    ImGui::EndDisabled();
 
     ImGui::TreePop();
   }
@@ -792,19 +971,22 @@ void buildPolyscopeGui() {
   }
 
 
-  lastWindowHeightPolyscope = imguiStackMargin + ImGui::GetWindowHeight();
-  leftWindowsWidth = ImGui::GetWindowWidth();
+  internal::lastWindowHeightPolyscope = ImGui::GetWindowHeight();
+  internal::leftWindowsWidth = ImGui::GetWindowWidth();
 
   ImGui::End();
 }
 
 void buildStructureGui() {
+  ensureWindowWidthsSet();
+
   // Create window
   static bool showStructureWindow = true;
 
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
-  ImGui::SetNextWindowSize(
-      ImVec2(leftWindowsWidth, view::windowHeight - lastWindowHeightPolyscope - 3 * imguiStackMargin));
+  ImGui::SetNextWindowPos(
+      ImVec2(internal::imguiStackMargin, internal::lastWindowHeightPolyscope + 2 * internal::imguiStackMargin));
+  ImGui::SetNextWindowSize(ImVec2(internal::leftWindowsWidth, view::windowHeight - internal::lastWindowHeightPolyscope -
+                                                                  3 * internal::imguiStackMargin));
   ImGui::Begin("Structures", &showStructureWindow);
 
   // only show groups if there are any
@@ -862,26 +1044,45 @@ void buildStructureGui() {
     ImGui::PopID();
   }
 
-  leftWindowsWidth = ImGui::GetWindowWidth();
+  internal::leftWindowsWidth = ImGui::GetWindowWidth();
 
   ImGui::End();
 }
 
 void buildPickGui() {
-  if (pick::haveSelection()) {
+  ensureWindowWidthsSet();
 
-    ImGui::SetNextWindowPos(ImVec2(view::windowWidth - (rightWindowsWidth + imguiStackMargin),
-                                   2 * imguiStackMargin + lastWindowHeightUser));
-    ImGui::SetNextWindowSize(ImVec2(rightWindowsWidth, 0.));
+  if (haveSelection()) {
+
+    ImGui::SetNextWindowPos(ImVec2(view::windowWidth - (internal::rightWindowsWidth + internal::imguiStackMargin),
+                                   internal::lastRightSideFreeY + internal::imguiStackMargin));
+    ImGui::SetNextWindowSize(ImVec2(internal::rightWindowsWidth, 0.));
 
     ImGui::Begin("Selection", nullptr);
-    std::pair<Structure*, size_t> selection = pick::getSelection();
+    PickResult selection = getSelection();
 
-    ImGui::TextUnformatted((selection.first->typeName() + ": " + selection.first->name).c_str());
+
+    ImGui::Text("screen coordinates: (%.2f,%.2f)  depth: %g", selection.screenCoords.x, selection.screenCoords.y,
+                selection.depth);
+    ImGui::Text("world position: <%g, %g, %g>", selection.position.x, selection.position.y, selection.position.z);
+    ImGui::NewLine();
+
+    ImGui::TextUnformatted((selection.structureType + ": " + selection.structureName).c_str());
+    if (selection.quantityName != "") {
+      ImGui::TextUnformatted(("Quantity: " + selection.quantityName).c_str());
+    }
     ImGui::Separator();
-    selection.first->buildPickUI(selection.second);
 
-    rightWindowsWidth = ImGui::GetWindowWidth();
+    if (selection.structureHandle.isValid()) {
+      selection.structureHandle.get().buildPickUI(selection);
+    } else {
+      // this is a paranoid check, it _should_ never happen since we
+      // clear the selection when a structure is deleted
+      ImGui::TextUnformatted("ERROR: INVALID STRUCTURE");
+    }
+
+    internal::rightWindowsWidth = ImGui::GetWindowWidth();
+    internal::lastRightSideFreeY += internal::imguiStackMargin + ImGui::GetWindowHeight();
     ImGui::End();
   }
 }
@@ -905,11 +1106,15 @@ void buildUserGuiAndInvokeCallback() {
     if (beganUserGUI) {
       userGuiEnd();
     } else {
-      lastWindowHeightUser = imguiStackMargin;
+      internal::lastWindowHeightUser = internal::imguiStackMargin;
+      internal::lastRightSideFreeX = view::windowWidth - internal::imguiStackMargin;
+      internal::lastRightSideFreeY = internal::imguiStackMargin;
     }
 
   } else {
-    lastWindowHeightUser = imguiStackMargin;
+    internal::lastWindowHeightUser = internal::imguiStackMargin;
+    internal::lastRightSideFreeX = view::windowWidth - internal::imguiStackMargin;
+    internal::lastRightSideFreeY = internal::imguiStackMargin;
   }
 }
 
@@ -918,8 +1123,7 @@ void buildEvenOddGui() {
   static bool showEvenOddWindow = true;
 
   ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
-  ImGui::SetNextWindowSize(
-      ImVec2(leftWindowsWidth, 0.));
+  ImGui::SetNextWindowSize(ImVec2(leftWindowsWidth, 0.));
 
   ImGui::Begin("Even-Odd", &showEvenOddWindow);
 
@@ -928,8 +1132,40 @@ void buildEvenOddGui() {
 
   // Checkbox to black out odd frames
   ImGui::Checkbox("Black out odd frames", &options::blackOutOddFrames);
-  
-  //Checkbox to draw even frames first
+
+  // Checkbox to draw even frames first
+  ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
+
+  ImGui::PushItemWidth(40);
+  if (ImGui::InputFloat("target sleep", &options::targetSleep, 0)) {
+    if (options::targetSleep < 0.0) {
+      options::targetSleep = 0.0;
+    }
+  }
+  ImGui::PopItemWidth();
+
+  lastWindowHeightPolyscope += imguiStackMargin + ImGui::GetWindowHeight();
+  leftWindowsWidth = ImGui::GetWindowWidth();
+
+  ImGui::End();
+}
+
+void buildEvenOddGui() {
+  // Create window
+  static bool showEvenOddWindow = true;
+
+  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
+  ImGui::SetNextWindowSize(ImVec2(leftWindowsWidth, 0.));
+
+  ImGui::Begin("Even-Odd", &showEvenOddWindow);
+
+  // Checkbox to black out even frames
+  ImGui::Checkbox("Black out even frames", &options::blackOutEvenFrames);
+
+  // Checkbox to black out odd frames
+  ImGui::Checkbox("Black out odd frames", &options::blackOutOddFrames);
+
+  // Checkbox to draw even frames first
   ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
 
   ImGui::PushItemWidth(40);
@@ -1097,8 +1333,10 @@ void drawBlankFrame(bool withUI, bool withContextCallback) {
 
 
 void mainLoopIteration() {
+  markLastFrameTime();
 
   processLazyProperties();
+  processLazyPropertiesOutsideOfImGui();
 
   render::engine->makeContextCurrent();
   render::engine->updateWindowSize();
@@ -1146,7 +1384,7 @@ void mainLoopIterationAbsoluteClock(bool drawBlank) {
   std::chrono::microseconds delayTime(static_cast<int>(frameTimeMicroseconds * options::targetSleep / 100));
   auto swapTime = frameStartTime + delayTime;
   while (std::chrono::steady_clock::now() < swapTime) {
-    std::this_thread::yield(); 
+    std::this_thread::yield();
   }
 }
 
@@ -1164,7 +1402,7 @@ void mainLoopIterationEvenOdd(bool drawBlank) {
 
   // Rendering
 
-  double subFrameFPS = (double) options::maxFPS * 2;
+  double subFrameFPS = (double)options::maxFPS * 2;
   std::chrono::duration<double> targetSubFrameTime(1.0 / subFrameFPS);
 
   if (drawBlank) {
@@ -1172,14 +1410,14 @@ void mainLoopIterationEvenOdd(bool drawBlank) {
   } else {
     draw();
   }
-  
+
   // Wait so that we hit our target subFrameFPS
   auto currTime = std::chrono::steady_clock::now();
   auto elapsedTime = currTime - lastMainLoopIterTime;
   if (elapsedTime < targetSubFrameTime) {
     std::this_thread::sleep_for(options::targetSleep * (targetSubFrameTime - elapsedTime) / 100);
   }
-  
+
   render::engine->swapDisplayBuffers();
 
   lastMainLoopIterTime = std::chrono::steady_clock::now();
@@ -1190,6 +1428,14 @@ void show(size_t forFrames) {
   if (!state::initialized) {
     exception("must initialize Polyscope with polyscope::init() before calling polyscope::show().");
   }
+
+  if (isHeadless() && forFrames == 0) {
+    info("You called show() while in headless mode. In headless mode there is no display to create windows on. By "
+         "default, the show() call will block indefinitely. If you did not mean to run in headless mode, check the "
+         "initialization settings. Otherwise, be sure to set a callback to make something happen while polyscope is "
+         "showing the UI, or use functions like screenshot() to render directly without calling show().");
+  }
+
   unshowRequested = false;
 
   // the popContext() doesn't quit until _after_ the last frame, so we need to decrement by 1 to get the count right
@@ -1235,14 +1481,41 @@ bool windowRequestsClose() {
   return false;
 }
 
-void shutdown() {
+bool isHeadless() {
+  if (!isInitialized()) {
+    exception("must initialize Polyscope with init() before calling isHeadless().");
+  }
+  if (render::engine) {
+    return render::engine->isHeadless();
+  }
+  return false;
+}
 
-  // TODO should we make an effort to destruct everything here?
+void shutdown(bool allowMidFrameShutdown) {
+
+  if (!allowMidFrameShutdown && contextStack.size() > 1) {
+    terminatingError("shutdown() was called mid-frame (e.g. in a per-frame callback, or UI element). This is not "
+                     "permitted, shutdown() may only be called when the main loop is not executing.");
+  }
+
   if (options::usePrefsFile) {
     writePrefsFile();
   }
 
-  render::engine->shutdownImGui();
+  // Clear out all structures and other scene objects
+  removeAllStructures();
+  removeAllGroups();
+  removeAllSlicePlanes();
+  clearMessages();
+  state::userCallback = nullptr;
+
+  // Shut down the render engine
+  render::engine->shutdown();
+  delete render::engine;
+  contextStack.clear();
+  render::engine = nullptr;
+  state::backend = "";
+  state::initialized = false;
 }
 
 bool registerStructure(Structure* s, bool replaceIfPresent) {
@@ -1280,8 +1553,6 @@ bool registerStructure(Structure* s, bool replaceIfPresent) {
 
 Structure* getStructure(std::string type, std::string name) {
 
-  if (type == "" || name == "") return nullptr;
-
   // If there are no structures of that type it is an automatic fail
   if (state::structures.find(type) == state::structures.end()) {
     exception("No structures of type " + type + " registered");
@@ -1317,14 +1588,14 @@ bool hasStructure(std::string type, std::string name) {
   // Special automatic case, return any
   if (name == "") {
     if (sMap.size() != 1) {
-      exception("Cannot use automatic structure get with empty name unless there is exactly one structure of that type "
-                "registered");
+      exception(
+          "Cannot use automatic has-structure test with empty name unless there is exactly one structure of that type "
+          "registered");
     }
     return true;
   }
   return sMap.find(name) != sMap.end();
 }
-
 
 void removeStructure(std::string type, std::string name, bool errorIfAbsent) {
 
@@ -1354,7 +1625,7 @@ void removeStructure(std::string type, std::string name, bool errorIfAbsent) {
   for (auto& g : state::groups) {
     g.second->removeChildStructure(*s);
   }
-  pick::resetSelectionIfStructure(s);
+  resetSelectionIfStructure(s);
   sMap.erase(s->name);
   updateStructureExtents();
   return;
@@ -1415,7 +1686,7 @@ void removeAllStructures() {
   }
 
   requestRedraw();
-  pick::resetSelection();
+  resetSelection();
 }
 
 
@@ -1475,7 +1746,7 @@ bool registerLight(Light* light, bool replaceIfPresent) {
     if (replaceIfPresent) {
       // TODO: removeLight(light->name)
     } else {
-      exception("Attempted to register light with name " + light->getLightName() + 
+      exception("Attempted to register light with name " + light->getLightName() +
                 ", but a light with that name already exists");
       return false;
     }
@@ -1485,11 +1756,7 @@ bool registerLight(Light* light, bool replaceIfPresent) {
   lMap[light->getLightName()] = std::unique_ptr<Light>(light); // take ownership with a unique pointer
 
   // Update lighting information through the Light Manager
-  render::engine->lightManager->registerLight(
-                                  light->getLightName(), 
-                                  light->getLightPosition(), 
-                                  light->getLightColor()
-                                );
+  render::engine->lightManager->registerLight(light->getLightName(), light->getLightPosition(), light->getLightColor());
 
   requestRedraw();
   return true;
@@ -1508,7 +1775,8 @@ Light* getLight(std::string type, std::string name) {
   // Special automatic case
   if (name == "") {
     if (lMap.size() != 1) {
-      exception("Cannot use automatic light get with empty name unless there is exactly one light of that type registered");
+      exception(
+          "Cannot use automatic light get with empty name unless there is exactly one light of that type registered");
       return nullptr;
     }
     return lMap.begin()->second.get();
@@ -1528,13 +1796,14 @@ bool hasLight(std::string type, std::string name) {
   if (state::lights.find(type) == state::lights.end()) {
     return false;
   }
-  
+
   std::map<std::string, std::unique_ptr<Light>>& lMap = state::lights[type];
 
   // Special automatic case
   if (name == "") {
     if (lMap.size() != 1) {
-      exception("Cannot use automatic light check with empty name unless there is exactly one light of that type registered");
+      exception(
+          "Cannot use automatic light check with empty name unless there is exactly one light of that type registered");
     }
     return true;
   }
@@ -1587,6 +1856,7 @@ namespace lazy {
 TransparencyMode transparencyMode = TransparencyMode::None;
 int transparencyRenderPasses = 8;
 int ssaaFactor = 1;
+float uiScale = -1.;
 bool groundPlaneEnabled = true;
 GroundPlaneMode groundPlaneMode = GroundPlaneMode::TileReflection;
 ScaledValue<float> groundPlaneHeightFactor = 0;
@@ -1604,7 +1874,9 @@ void processLazyProperties() {
   //
   // This function is a workaround which polls for changes to options settings, and performs any necessary additional
   // work.
-
+  //
+  // There is a second function processLazyPropertiesOutsideOfImGui() which handles a few more that can only be set
+  // at limited times when an ImGui frame is not active.
 
   // transparency mode
   if (lazy::transparencyMode != options::transparencyMode) {
@@ -1632,7 +1904,6 @@ void processLazyProperties() {
       options::groundPlaneMode = GroundPlaneMode::None;
     }
     lazy::groundPlaneMode = options::groundPlaneMode;
-    render::engine->groundPlane.prepare();
     requestRedraw();
   }
   if (lazy::groundPlaneHeightFactor.asAbsolute() != options::groundPlaneHeightFactor.asAbsolute() ||
@@ -1649,6 +1920,17 @@ void processLazyProperties() {
     requestRedraw();
   }
 };
+
+void processLazyPropertiesOutsideOfImGui() {
+  // Like processLazyProperties, but this one handles properties which cannot be changed mid-ImGui frame
+
+  // uiScale
+  if (lazy::uiScale != options::uiScale) {
+    lazy::uiScale = options::uiScale;
+    render::engine->configureImGui();
+    setInitialWindowWidths();
+  }
+}
 
 void updateStructureExtents() {
 

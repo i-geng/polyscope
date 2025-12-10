@@ -36,7 +36,6 @@ enum class DrawMode {
   TriangleStripInstanced,
 };
 
-enum class FilterMode { Nearest = 0, Linear };
 enum class TextureFormat { RGB8 = 0, RGBA8, RG16F, RGB16F, RGBA16F, RGBA32F, RGB32F, R32F, R16F, DEPTH24 };
 enum class RenderBufferType { Color, ColorAlpha, Depth, Float4 };
 enum class DepthMode { Less, LEqual, LEqualReadOnly, Greater, Disable, PassReadOnly };
@@ -446,7 +445,7 @@ public:
   virtual void setLightPosition(std::string name, glm::vec3 newPos) = 0;
   virtual void setLightColor(std::string name, glm::vec3 newCol) = 0;
   virtual void setEnabled(std::string name, bool newVal) = 0;
-  
+
 protected:
   const size_t MAX_LIGHTS = 10;
 
@@ -460,8 +459,12 @@ public:
   virtual ~Engine();
 
   // High-level control
+  virtual void shutdown(){};
   virtual void checkError(bool fatal = false) = 0;
   void buildEngineGui();
+
+  // 'headless' means there is no physical display to actually render to, e.g. when running on a remote server
+  virtual bool isHeadless() { return false; }
 
   virtual void clearDisplay();
   virtual void bindDisplay();
@@ -526,7 +529,6 @@ public:
   virtual bool windowRequestsClose() = 0;
   virtual void pollEvents() = 0;
   virtual bool isKeyPressed(char c) = 0; // for lowercase a-z and 0-9 only
-  virtual int getKeyCode(char c) = 0;    // for lowercase a-z and 0-9 only
   virtual std::string getClipboardText() = 0;
   virtual void setClipboardText(std::string text) = 0;
 
@@ -540,7 +542,10 @@ public:
   virtual void ImGuiRender() = 0;
 
   void setImGuiStyle();
-  ImFontAtlas* getImGuiGlobalFontAtlas();
+
+  // Display an ImGui window showing a texture
+  // WARNING: you must ensure that the texture buffer pointer stays valid until after the ImGui frame is rendered, which
+  // is not until the end of a main loop iteration.
   virtual void showTextureInImGuiWindow(std::string windowName, TextureBuffer* buffer);
 
 
@@ -602,7 +607,7 @@ public:
   TransparencyMode getTransparencyMode();
   bool transparencyEnabled();
   virtual void applyTransparencySettings() = 0;
-  void addSlicePlane(std::string uniquePostfix);
+  void addSlicePlane(std::string uniquePostfix); // TODO move slice planes out of the engine
   void removeSlicePlane(std::string uniquePostfix);
   bool slicePlanesEnabled();                     // true if there is at least one slice plane in the scene
   virtual void setFrontFaceCCW(bool newVal) = 0; // true if CCW triangles are considered front-facing; false otherwise
@@ -633,6 +638,7 @@ public:
   std::vector<std::unique_ptr<ValueColorMap>> colorMaps;
   const ValueColorMap& getColorMap(const std::string& name);
   void loadColorMap(std::string cmapName, std::string filename);
+  std::shared_ptr<TextureBuffer> getColorMapTexture2d(const std::string& cmapName);
 
   // Helpers
   std::vector<glm::vec3> screenTrianglesCoords(); // two triangles which cover the screen
@@ -647,10 +653,15 @@ public:
   bool useAltDisplayBuffer = false; // if true, push final render results offscreen to the alt buffer instead
 
   // Internal windowing and engine details
-  ImFontAtlas* globalFontAtlas = nullptr;
+  virtual void configureImGui(){}; // generates font things
   ImFont* regularFont = nullptr;
   ImFont* monoFont = nullptr;
   FrameBuffer* currRenderFramebuffer = nullptr;
+
+  // Manage some resources that we need to preserve because ImGui will use them to render at the end of the frame
+  // This matters if we delete something mid-frame but have already passed a pointer to a texture for imgui to render,
+  // which happens at the end of the frame.
+  void preserveResourceUntilImguiFrameCompletes(std::shared_ptr<TextureBuffer> texture);
 
   // Light Manager
   LightManager* lightManager;
@@ -675,7 +686,6 @@ protected:
   bool isCurrFlatLighting = false;
 
   // Helpers
-  void configureImGui();
   void loadDefaultMaterials();
   void loadDefaultMaterial(std::string name);
   std::shared_ptr<TextureBuffer> loadMaterialTexture(float* data, int width, int height);
@@ -691,6 +701,9 @@ protected:
   std::vector<std::string> defaultRules_pick{"GLSL_VERSION", "GLOBAL_FRAGMENT_FILTER", "SHADE_COLOR", "LIGHT_PASSTHRU"};
   std::vector<std::string> defaultRules_process{"GLSL_VERSION"};
 
+  // Lists of points to support preserving resources until the end of an ImGUI frame (see note above)
+  void clearResourcesPreservedForImguiFrame();
+  std::vector<std::shared_ptr<TextureBuffer>> resourcesPreservedForImGuiFrame;
 };
 
 

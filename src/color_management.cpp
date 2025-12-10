@@ -10,9 +10,6 @@
 #include <cmath>
 #include <iostream>
 
-using std::cout;
-using std::endl;
-
 namespace polyscope {
 
 namespace {

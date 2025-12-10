@@ -12,20 +12,17 @@
 
 #include <algorithm>
 #include <set>
+#include <sstream>
 
 namespace polyscope {
 namespace render {
 namespace backend_openGL3 {
 
-GLEngineGLFW* glEngineGLFW = nullptr; // alias for global engine pointer
-extern GLEngine* glEngine;            // defined in gl_engine.h
-
 void initializeRenderEngine_glfw() {
 
-  glEngineGLFW = new GLEngineGLFW(); // create the new global engine object
+  GLEngineGLFW* glEngineGLFW = new GLEngineGLFW(); // create the new global engine object
 
   engine = glEngineGLFW; // we keep a few copies of this pointer with various types
-  glEngine = glEngineGLFW;
 
   // initialize
   glEngineGLFW->initialize();
@@ -40,9 +37,7 @@ void GLEngineGLFW::initialize() {
 
   // Small callback function for GLFW errors
   auto error_print_callback = [](int error, const char* description) {
-    if (polyscope::options::verbosity > 0) {
-      std::cout << "GLFW emitted error: " << description << std::endl;
-    }
+    info(0, "GLFW emitted error: " + std::string(description));
   };
 
   // === Initialize glfw
@@ -55,6 +50,15 @@ void GLEngineGLFW::initialize() {
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+  // This tells GLFW to scale window size/positioning/content based on the system-reported DPI scaling factor
+  // However, it can lead to some confusing behaviors, for instance, on linux with scaling=200%, if the user
+  // sets view::windowWidth = 1280, they might get back a window with windowWidth == bufferWidth == 2560,
+  // which is quite confusing.
+  // For this reason we _do not_ set this hint. If desired, the user can specify a windowWidth = 1280*uiScale,
+  // or let the window size by loaded from .polyscope.ini after setting manually once.
+  // glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+
 #if __APPLE__
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
@@ -84,9 +88,12 @@ void GLEngineGLFW::initialize() {
     exception("ERROR: Failed to load openGL using GLAD");
   }
 #endif
-  if (options::verbosity > 0) {
-    std::cout << options::printPrefix << "Backend: openGL3_glfw -- "
-              << "Loaded openGL version: " << glGetString(GL_VERSION) << std::endl;
+
+  {
+    std::stringstream ss;
+    ss << "Backend: openGL3_glfw -- "
+       << "Loaded openGL version: " << glGetString(GL_VERSION);
+    info(0, ss.str());
   }
 
 #ifdef __APPLE__
@@ -103,14 +110,46 @@ void GLEngineGLFW::initialize() {
     // glClearDepth(1.);
   }
 
+  // Set the UI scale to account for system-requested DPI scaling
+  // Currently we do *not* watch for changes of this value e.g. if a window moves between
+  // monitors with different DPI behaviors. We could, but it would require some logic to
+  // avoid overwriting values that a user might have set.
+  if (options::uiScale < 0) { // only set from system if the value is -1, meaning not set yet
+    setUIScaleFromSystemDPI();
+  }
+
   populateDefaultShadersAndRules();
 }
 
+void GLEngineGLFW::setUIScaleFromSystemDPI() {
+
+  // logic adapted from a helpful imgui issue here: https://github.com/ocornut/imgui/issues/6967#issuecomment-2833882081
+
+  ImVec2 windowSize{static_cast<float>(view::windowWidth), static_cast<float>(view::windowHeight)};
+  ImVec2 bufferSize{static_cast<float>(view::bufferWidth), static_cast<float>(view::bufferHeight)};
+  ImVec2 imguiCoordScale = {bufferSize.x / windowSize.x, bufferSize.y / windowSize.y};
+
+  ImVec2 contentScale;
+  glfwGetWindowContentScale(mainWindow, &contentScale.x, &contentScale.y);
+
+  float sx = contentScale.x / imguiCoordScale.x;
+  float sy = contentScale.y / imguiCoordScale.y;
+  options::uiScale = std::max(sx, sy);
+  // clamp to values within [0.5x,4x] scaling
+  options::uiScale = std::fmin(std::fmax(options::uiScale, 0.5f), 4.0f);
+
+  info(100, "window size: " + std::to_string(view::windowWidth) + "," + std::to_string(view::windowHeight));
+  info(100, "buffer size: " + std::to_string(view::bufferWidth) + "," + std::to_string(view::bufferHeight));
+  info(100, "imguiCoordScale: " + std::to_string(imguiCoordScale.x) + "," + std::to_string(imguiCoordScale.y));
+  info(100, "contentScale: " + std::to_string(contentScale.x) + "," + std::to_string(contentScale.y));
+  info(100, "computed uiScale: " + std::to_string(options::uiScale));
+}
 
 void GLEngineGLFW::initializeImGui() {
   bindDisplay();
 
   ImGui::CreateContext(); // must call once at start
+  ImPlot::CreateContext(); 
 
   // Set up ImGUI glfw bindings
   ImGui_ImplGlfw_InitForOpenGL(mainWindow, true);
@@ -120,10 +159,47 @@ void GLEngineGLFW::initializeImGui() {
   configureImGui();
 }
 
+void GLEngineGLFW::configureImGui() {
+
+  if (options::uiScale < 0) {
+    exception("uiScale is < 0. Perhaps it wasn't initialized?");
+  }
+
+  if (options::prepareImGuiFontsCallback) {
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
+
+    // these are necessary if different fonts are loaded in the callback
+    // (don't totally understand why, allegedly it may change in the future)
+    ImGui_ImplOpenGL3_DestroyFontsTexture();
+
+    ImFontAtlas* _unused;
+    std::tie(_unused, regularFont, monoFont) = options::prepareImGuiFontsCallback();
+
+    ImGui_ImplOpenGL3_CreateFontsTexture();
+  }
+
+
+  if (options::configureImGuiStyleCallback) {
+    options::configureImGuiStyleCallback();
+  }
+}
+
+
+void GLEngineGLFW::shutdown() {
+  checkError();
+  shutdownImGui();
+  glfwDestroyWindow(mainWindow);
+  glfwTerminate();
+}
+
+
 void GLEngineGLFW::shutdownImGui() {
   // ImGui shutdown things
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
+  ImPlot::DestroyContext();
   ImGui::DestroyContext();
 }
 
@@ -136,6 +212,7 @@ void GLEngineGLFW::ImGuiNewFrame() {
 void GLEngineGLFW::ImGuiRender() {
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+  clearResourcesPreservedForImguiFrame();
 }
 
 
@@ -190,7 +267,10 @@ void GLEngineGLFW::applyWindowSize() {
   // on some platform size changes are asynchonous, need to ensure it completes
   // we don't want to just retry until the resize has happened, because it could be impossible
   // TODO it seems like on X11 sometimes even this isn't enough?
-  glfwWaitEvents();
+  // glfwWaitEvents();
+  // NSHARP: disabling this ^^^, on macOS it is causing the window to block until it gets focus,
+  // and some googling makes me thing the underlying buffers should be resized immediately, which is
+  // all we really care about
 
   updateWindowSize(true);
 }
@@ -227,20 +307,16 @@ bool GLEngineGLFW::isKeyPressed(char c) {
   return false;
 }
 
-int GLEngineGLFW::getKeyCode(char c) {
-  if (c >= '0' && c <= '9') return static_cast<int>(ImGuiKey_0) + (c - '0');
-  if (c >= 'a' && c <= 'z') return static_cast<int>(ImGuiKey_A) + (c - 'a');
-  if (c >= 'A' && c <= 'Z') return static_cast<int>(ImGuiKey_A) + (c - 'A');
-  exception("getKeyCode only supports 0-9, a-z, A-Z");
-  return -1;
-}
+
+// For some reason the ImGui::SetClipboardText() didn't work here, on linux
+// it would not actually write to system clipboard. Calling glfw directly seems to work.
 
 std::string GLEngineGLFW::getClipboardText() {
-  std::string clipboardData = ImGui::GetClipboardText();
+  std::string clipboardData = glfwGetClipboardString(nullptr);
   return clipboardData;
 }
 
-void GLEngineGLFW::setClipboardText(std::string text) { ImGui::SetClipboardText(text.c_str()); }
+void GLEngineGLFW::setClipboardText(std::string text) { glfwSetClipboardString(nullptr, text.c_str()); }
 
 } // namespace backend_openGL3
 } // namespace render

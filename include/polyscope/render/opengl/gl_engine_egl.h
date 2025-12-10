@@ -12,6 +12,7 @@
 #include "glad/glad.h"
 // glad must come first
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #endif
 
 
@@ -38,8 +39,12 @@ public:
 
   // High-level control
   void initialize();
+  virtual void shutdown() override;
   void swapDisplayBuffers() override;
   void checkError(bool fatal = false) override;
+
+  // EGL backend is always headless
+  virtual bool isHeadless() override { return true; }
 
   // === Windowing and framework things
 
@@ -57,7 +62,6 @@ public:
   bool windowRequestsClose() override;
 
   bool isKeyPressed(char c) override; // for lowercase a-z and 0-9 only
-  int getKeyCode(char c) override;    // for lowercase a-z and 0-9 only
   std::string getClipboardText() override;
   void setClipboardText(std::string text) override;
 
@@ -65,14 +69,48 @@ public:
   // === ImGui
 
   void initializeImGui() override;
+  void configureImGui() override;
   void shutdownImGui() override;
   void ImGuiNewFrame() override;
   void ImGuiRender() override;
 
 protected:
+  // Function pointers for dynamic loading of EGL and extensions
+  // (see explanation in resolveEGL)
+  void resolveEGL();
+  typedef EGLint (*eglGetErrorT)(void);
+  eglGetErrorT eglGetError = nullptr;
+  typedef EGLDisplay (*eglGetPlatformDisplayT)(EGLenum, void*, const EGLAttrib*);
+  eglGetPlatformDisplayT eglGetPlatformDisplay = nullptr;
+  typedef EGLBoolean (*eglInitializeT)(EGLDisplay, EGLint*, EGLint*);
+  eglInitializeT eglInitialize = nullptr;
+  typedef EGLBoolean (*eglChooseConfigT)(EGLDisplay, EGLint const*, EGLConfig*, EGLint, EGLint*);
+  eglChooseConfigT eglChooseConfig = nullptr;
+  typedef EGLBoolean (*eglBindAPIT)(EGLenum);
+  eglBindAPIT eglBindAPI = nullptr;
+  typedef EGLContext (*eglCreateContextT)(EGLDisplay, EGLConfig, EGLContext, EGLint const*);
+  eglCreateContextT eglCreateContext = nullptr;
+  typedef EGLBoolean (*eglMakeCurrentT)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
+  eglMakeCurrentT eglMakeCurrent = nullptr;
+  typedef EGLBoolean (*eglDestroyContextT)(EGLDisplay, EGLContext);
+  eglDestroyContextT eglDestroyContext = nullptr;
+  typedef EGLBoolean (*eglTerminateT)(EGLDisplay);
+  eglTerminateT eglTerminate = nullptr;
+  typedef void (*eglProcT)(void); // our helper type
+  typedef eglProcT (*eglGetProcAddressT)(const char*);
+  eglGetProcAddressT eglGetProcAddress = nullptr;
+  typedef const char* (*eglQueryStringT)(EGLDisplay, EGLint);
+  eglQueryStringT eglQueryString = nullptr;
+  PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT = nullptr;
+  PFNEGLQUERYDEVICESTRINGEXTPROC eglQueryDeviceStringEXT = nullptr;
+
   // Internal windowing and engine details
   EGLDisplay eglDisplay;
   EGLContext eglContext;
+
+  // helpers
+  void checkEGLError(bool fatal = true);
+  void sortAvailableDevicesByPreference(std::vector<int32_t>& deviceInds, EGLDeviceEXT rawDevices[]);
 };
 
 } // namespace backend_openGL3

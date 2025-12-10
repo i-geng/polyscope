@@ -129,7 +129,10 @@ if("${POLYSCOPE_BACKEND_OPENGL3_EGL}")
       message(FATAL_ERROR "Compiling EGL backed on Windows is not supported. Set POLYSCOPE_BACKEND_OPENGL3_EGL=False")
     else() # linux
       # only linux is actually supported for EGL
-      list(APPEND BACKEND_LIBS EGL)
+
+      # We intentionally *do not* list this as a shared library dependency, it gets loaded optionally at runtime
+      # via dlopen(). See explanation in gl_engine_egl.cpp.
+      # list(APPEND BACKEND_LIBS EGL) 
     endif()
 
   endif()
@@ -180,13 +183,14 @@ SET(SRCS
   disjoint_sets.cpp
   file_helpers.cpp
   camera_parameters.cpp
-  histogram.cpp
+  color_bar.cpp
   persistent_value.cpp
   color_management.cpp
   transformation_gizmo.cpp
   slice_plane.cpp
   weak_handle.cpp
   marching_cubes.cpp
+  elementary_geometry.cpp
 
   ## Structures
 
@@ -273,6 +277,8 @@ SET(HEADERS
   ${INCLUDE_ROOT}/camera_parameters.ipp
   ${INCLUDE_ROOT}/camera_view.h
   ${INCLUDE_ROOT}/camera_view.ipp
+  ${INCLUDE_ROOT}/check_invalid_values.h
+  ${INCLUDE_ROOT}/color_bar.h
   ${INCLUDE_ROOT}/color_management.h
   ${INCLUDE_ROOT}/color_image_quantity.h
   ${INCLUDE_ROOT}/color_render_image_quantity.h
@@ -289,12 +295,12 @@ SET(HEADERS
   ${INCLUDE_ROOT}/curve_network_vector_quantity.h
   ${INCLUDE_ROOT}/disjoint_sets.h
   ${INCLUDE_ROOT}/depth_render_image_quantity.h
+  ${INCLUDE_ROOT}/elementary_geometry.h
   ${INCLUDE_ROOT}/file_helpers.h
   ${INCLUDE_ROOT}/floating_quantity_structure.h
   ${INCLUDE_ROOT}/floating_quantity.h
   ${INCLUDE_ROOT}/floating_quantities.h
   ${INCLUDE_ROOT}/group.h
-  ${INCLUDE_ROOT}/histogram.h
   ${INCLUDE_ROOT}/image_quantity.h
   ${INCLUDE_ROOT}/imgui_config.h
   ${INCLUDE_ROOT}/implicit_helpers.h
@@ -302,6 +308,7 @@ SET(HEADERS
   ${INCLUDE_ROOT}/light.h
   ${INCLUDE_ROOT}/light.ipp
   ${INCLUDE_ROOT}/messages.h
+  ${INCLUDE_ROOT}/numeric_helpers.h
   ${INCLUDE_ROOT}/options.h
   ${INCLUDE_ROOT}/parameterization_quantity.h
   ${INCLUDE_ROOT}/parameterization_quantity.ipp
@@ -352,6 +359,8 @@ SET(HEADERS
   ${INCLUDE_ROOT}/surface_scalar_quantity.h
   ${INCLUDE_ROOT}/surface_six_channel_color_quantity.h
   ${INCLUDE_ROOT}/surface_vector_quantity.h
+  ${INCLUDE_ROOT}/texture_map_quantity.h
+  ${INCLUDE_ROOT}/texture_map_quantity.ipp
   ${INCLUDE_ROOT}/tetracolor_quantity.h
   ${INCLUDE_ROOT}/tetracolor_quantity.ipp
   ${INCLUDE_ROOT}/types.h

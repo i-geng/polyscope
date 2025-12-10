@@ -9,11 +9,19 @@ namespace options {
 std::string programName = "Polyscope";
 int verbosity = 2;
 std::string printPrefix = "[polyscope] ";
+bool allowHeadlessBackends = false;
 bool errorsThrowExceptions = false;
 bool debugDrawPickBuffer = false;
 int maxFPS = 60;
-float targetSleep = 85.0;
+#ifdef _WIN32
+// set the default vsync to false on windows, to workaround an glfw errors from an alleged driver bug
+bool enableVSync = false;
+#else
 bool enableVSync = true;
+#endif
+float targetSleep = 85.0;
+LimitFPSMode frameTickLimitFPSMode = LimitFPSMode::SkipFramesToHitTarget;
+
 bool usePrefsFile = true;
 bool initializeWithDefaultStructures = true;
 bool alwaysRedraw = false;
@@ -23,8 +31,11 @@ bool automaticallyComputeSceneExtents = true;
 bool invokeUserCallbackForNestedShow = false;
 bool giveFocusOnShow = false;
 bool hideWindowAfterShow = true;
+bool warnForInvalidValues = true;
+bool displayMessagePopups = true;
 
 bool screenshotTransparency = true;
+bool screenshotWithImGuiUI = false;
 std::string screenshotExtension = ".png";
 
 bool renderEvenOddAbsoluteClock = false;
@@ -37,13 +48,14 @@ bool blackOutOddFrames = false;
 // Ground plane / shadows
 bool groundPlaneEnabled = true;
 GroundPlaneMode groundPlaneMode = GroundPlaneMode::TileReflection;
+GroundPlaneHeightMode groundPlaneHeightMode = GroundPlaneHeightMode::Automatic;
 ScaledValue<float> groundPlaneHeightFactor = 0;
+float groundPlaneHeight = 0.;
 int shadowBlurIters = 2;
 float shadowDarkness = 0.25;
 
 // Rendering options
 
-bool useFlatLighting = false;
 int ssaaFactor = 1;
 
 // Transparency
@@ -61,6 +73,8 @@ bool openImGuiWindowForUserCallback = true;
 std::function<void()> configureImGuiStyleCallback = configureImGuiStyle;
 std::function<std::tuple<ImFontAtlas*, ImFont*, ImFont*>()> prepareImGuiFontsCallback = prepareImGuiFonts;
 
+// Backend and low-level options
+int eglDeviceIndex = -1; // means "try all of them"
 
 // enabled by default in debug mode
 #ifndef NDEBUG

@@ -38,8 +38,6 @@ namespace render {
 
 namespace backend_openGL3 {
 
-GLEngine* glEngine = nullptr; // alias for global engine pointer
-
 // == Map enums to native values
 
 // clang-format off
@@ -264,7 +262,7 @@ void GLAttributeBuffer::setData_helper(const std::vector<T>& data) {
 
   // do the actual copy
   dataSize = data.size();
-  glBufferSubData(getTarget(), 0, dataSize * sizeof(T), &data[0]);
+  glBufferSubData(getTarget(), 0, dataSize * sizeof(T), data.data());
 
   checkGLError();
 }
@@ -979,7 +977,7 @@ float GLFrameBuffer::readDepth(int xPos, int yPos) {
   bind();
 
   // Read from the buffer
-  float result;
+  float result = 1.;
   glReadPixels(xPos, yPos, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &result);
 
   return result;
@@ -1080,7 +1078,7 @@ void GLCompiledProgram::compileGLProgram(const std::vector<ShaderStageSpecificat
       if (options::verbosity > 2) {
         printShaderInfoLog(h);
       }
-      if (options::verbosity > 100) {
+      if (options::verbosity > 200) {
         std::cout << "Program text:" << std::endl;
         std::cout << s.src.c_str() << std::endl;
       }
@@ -1345,7 +1343,7 @@ void GLShaderProgram::createBuffer(GLShaderAttribute& a) {
   if (a.location == -1) return;
 
   // generate the buffer if needed
-  std::shared_ptr<AttributeBuffer> newBuff = glEngine->generateAttributeBuffer(a.type, a.arrayCount);
+  std::shared_ptr<AttributeBuffer> newBuff = engine->generateAttributeBuffer(a.type, a.arrayCount);
   std::shared_ptr<GLAttributeBuffer> engineNewBuff = std::dynamic_pointer_cast<GLAttributeBuffer>(newBuff);
   if (!engineNewBuff) throw std::invalid_argument("buffer type cast failed");
   a.buff = engineNewBuff;
@@ -1619,7 +1617,7 @@ void GLShaderProgram::setUniform(std::string name, glm::uvec4 val) {
 }
 
 void GLShaderProgram::setLightUniform(std::string name) {
-  ProgramHandle progHandle = compiledProgram->getHandle(); 
+  ProgramHandle progHandle = compiledProgram->getHandle();
   unsigned int index = glGetUniformBlockIndex(progHandle, name.c_str());
   if (index != GL_INVALID_INDEX) {
     glUniformBlockBinding(progHandle, index, 0);
@@ -2152,7 +2150,7 @@ bool GLLightManager::registerLight(std::string name, glm::vec3 pos, glm::vec3 co
   glm::vec4 position = glm::vec4(pos, 0.0f);
   glm::vec4 color_and_enabled = glm::vec4(col, 1.0f);
 
-  pointLightDataMap[name] = PointLightData( {position, color_and_enabled} );
+  pointLightDataMap[name] = PointLightData({position, color_and_enabled});
   updatePointLightUBO();
 
   return true;
@@ -2192,16 +2190,11 @@ void GLLightManager::updatePointLightUBO() {
 
   // Update the number of lights
   int numLights = pointLightDataVector.size();
-  glBufferSubData(GL_UNIFORM_BUFFER,
-                  sizeof(PointLightData) * MAX_LIGHTS,
-                  sizeof(int), 
-                  &numLights);
+  glBufferSubData(GL_UNIFORM_BUFFER, sizeof(PointLightData) * MAX_LIGHTS, sizeof(int), &numLights);
 
   // Update array of point lights
   if (numLights > 0) {
-    glBufferSubData(GL_UNIFORM_BUFFER, 
-                    0, 
-                    sizeof(PointLightData) * pointLightDataVector.size(),
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PointLightData) * pointLightDataVector.size(),
                     pointLightDataVector.data());
   }
 
@@ -2209,9 +2202,7 @@ void GLLightManager::updatePointLightUBO() {
   glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
-void GLLightManager::bindUBO() {
-  glBindBufferBase(GL_UNIFORM_BUFFER, 0, pointLightUBO);
-}
+void GLLightManager::bindUBO() { glBindBufferBase(GL_UNIFORM_BUFFER, 0, pointLightUBO); }
 
 // =============================================================
 // =====================  Engine ===============================
@@ -2573,6 +2564,7 @@ void GLEngine::populateDefaultShadersAndRules() {
   registerShaderProgram("RAYCAST_TANGENT_VECTOR", {FLEX_TANGENT_VECTOR_VERT_SHADER, FLEX_VECTOR_GEOM_SHADER, FLEX_VECTOR_FRAG_SHADER}, DrawMode::Points);
   registerShaderProgram("RAYCAST_CYLINDER", {FLEX_CYLINDER_VERT_SHADER, FLEX_CYLINDER_GEOM_SHADER, FLEX_CYLINDER_FRAG_SHADER}, DrawMode::Points);
   registerShaderProgram("HISTOGRAM", {HISTOGRAM_VERT_SHADER, HISTOGRAM_FRAG_SHADER}, DrawMode::Triangles);
+  registerShaderProgram("HISTOGRAM_CATEGORICAL", {HISTOGRAM_VERT_SHADER, HISTOGRAM_CATEGORICAL_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("GROUND_PLANE_TILE", {GROUND_PLANE_VERT_SHADER, GROUND_PLANE_TILE_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("GROUND_PLANE_TILE_REFLECT", {GROUND_PLANE_VERT_SHADER, GROUND_PLANE_TILE_REFLECT_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("GROUND_PLANE_SHADOW", {GROUND_PLANE_VERT_SHADER, GROUND_PLANE_SHADOW_FRAG_SHADER}, DrawMode::Triangles);
@@ -2621,6 +2613,7 @@ void GLEngine::populateDefaultShadersAndRules() {
   registerShaderRule("LIGHT_PASSTHRU_TETRA", LIGHT_PASSTHRU_TETRA);
   registerShaderRule("SHADE_BASECOLOR", SHADE_BASECOLOR);
   registerShaderRule("SHADE_COLOR", SHADE_COLOR);
+  registerShaderRule("SHADE_CATEGORICAL_COLORMAP", SHADE_CATEGORICAL_COLORMAP);
   registerShaderRule("SHADE_TETRACOLOR", SHADE_TETRACOLOR);
   registerShaderRule("SHADECOLOR_FROM_UNIFORM", SHADECOLOR_FROM_UNIFORM);
   registerShaderRule("SHADE_COLORMAP_VALUE", SHADE_COLORMAP_VALUE);
@@ -2630,6 +2623,7 @@ void GLEngine::populateDefaultShadersAndRules() {
   registerShaderRule("SHADE_CHECKER_CATEGORY", SHADE_CHECKER_CATEGORY);
   registerShaderRule("SHADEVALUE_MAG_VALUE2", SHADEVALUE_MAG_VALUE2);
   registerShaderRule("ISOLINE_STRIPE_VALUECOLOR", ISOLINE_STRIPE_VALUECOLOR);
+  registerShaderRule("CONTOUR_VALUECOLOR", CONTOUR_VALUECOLOR);
   registerShaderRule("CHECKER_VALUE2COLOR", CHECKER_VALUE2COLOR);
   registerShaderRule("INVERSE_TONEMAP", INVERSE_TONEMAP);
   registerShaderRule("COMPUTE_PHONG_SHADING", COMPUTE_PHONG_SHADING);
@@ -2656,7 +2650,9 @@ void GLEngine::populateDefaultShadersAndRules() {
   registerShaderRule("MESH_BACKFACE_DIFFERENT", MESH_BACKFACE_DIFFERENT);
   registerShaderRule("MESH_BACKFACE_DARKEN", MESH_BACKFACE_DARKEN);
   registerShaderRule("MESH_PROPAGATE_VALUE", MESH_PROPAGATE_VALUE);
+  registerShaderRule("MESH_PROPAGATE_VALUEALPHA", MESH_PROPAGATE_VALUEALPHA);
   registerShaderRule("MESH_PROPAGATE_FLAT_VALUE", MESH_PROPAGATE_FLAT_VALUE);
+  registerShaderRule("MESH_PROPAGATE_VALUE_CORNER_NEAREST", MESH_PROPAGATE_VALUE_CORNER_NEAREST);
   registerShaderRule("MESH_PROPAGATE_VALUE2", MESH_PROPAGATE_VALUE2);
   registerShaderRule("MESH_PROPAGATE_TCOORD", MESH_PROPAGATE_TCOORD);
   registerShaderRule("MESH_PROPAGATE_COLOR", MESH_PROPAGATE_COLOR);
@@ -2676,6 +2672,7 @@ void GLEngine::populateDefaultShadersAndRules() {
 
   // sphere things
   registerShaderRule("SPHERE_PROPAGATE_VALUE", SPHERE_PROPAGATE_VALUE);
+  registerShaderRule("SPHERE_PROPAGATE_VALUEALPHA", SPHERE_PROPAGATE_VALUEALPHA);
   registerShaderRule("SPHERE_PROPAGATE_VALUE2", SPHERE_PROPAGATE_VALUE2);
   registerShaderRule("SPHERE_PROPAGATE_COLOR", SPHERE_PROPAGATE_COLOR);
   registerShaderRule("SPHERE_PROPAGATE_TETRACOLOR", SPHERE_PROPAGATE_TETRACOLOR);
@@ -2691,6 +2688,7 @@ void GLEngine::populateDefaultShadersAndRules() {
   // cylinder things
   registerShaderRule("CYLINDER_PROPAGATE_VALUE", CYLINDER_PROPAGATE_VALUE);
   registerShaderRule("CYLINDER_PROPAGATE_BLEND_VALUE", CYLINDER_PROPAGATE_BLEND_VALUE);
+  registerShaderRule("CYLINDER_PROPAGATE_NEAREST_VALUE", CYLINDER_PROPAGATE_NEAREST_VALUE);
   registerShaderRule("CYLINDER_PROPAGATE_COLOR", CYLINDER_PROPAGATE_COLOR);
   registerShaderRule("CYLINDER_PROPAGATE_BLEND_COLOR", CYLINDER_PROPAGATE_BLEND_COLOR);
   registerShaderRule("CYLINDER_PROPAGATE_PICK", CYLINDER_PROPAGATE_PICK);
@@ -2713,9 +2711,7 @@ void GLEngine::createSlicePlaneFliterRule(std::string uniquePostfix) {
       {"SLICE_PLANE_VOLUMEGRID_CULL_" + uniquePostfix, generateVolumeGridSlicePlaneRule(uniquePostfix)});
 }
 
-void GLEngine::createLightManager() {
-  lightManager = new GLLightManager();
-}
+void GLEngine::createLightManager() { lightManager = new GLLightManager(); }
 
 } // namespace backend_openGL3
 } // namespace render

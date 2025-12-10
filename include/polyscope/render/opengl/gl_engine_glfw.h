@@ -48,6 +48,7 @@ public:
 
   // High-level control
   void initialize();
+  virtual void shutdown() override;
   void swapDisplayBuffers() override;
 
   // === Windowing and framework things
@@ -66,7 +67,6 @@ public:
   bool windowRequestsClose() override;
 
   bool isKeyPressed(char c) override; // for lowercase a-z and 0-9 only
-  int getKeyCode(char c) override;    // for lowercase a-z and 0-9 only
   std::string getClipboardText() override;
   void setClipboardText(std::string text) override;
 
@@ -77,10 +77,13 @@ public:
   void shutdownImGui() override;
   void ImGuiNewFrame() override;
   void ImGuiRender() override;
+  void configureImGui() override;
 
 protected:
   // Internal windowing and engine details
   GLFWwindow* mainWindow = nullptr;
+
+  void setUIScaleFromSystemDPI();
 };
 
 } // namespace backend_openGL3

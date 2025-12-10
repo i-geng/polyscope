@@ -271,8 +271,7 @@ ShaderProgram::ShaderProgram(DrawMode dm) : drawMode(dm), uniqueID(render::engin
 }
 
 
-LightManager::LightManager() {
-} 
+LightManager::LightManager() {}
 
 LightManager::~LightManager() {}
 
@@ -285,7 +284,7 @@ void Engine::buildEngineGui() {
   if (ImGui::TreeNode("Appearance")) {
 
     // == Display
-    ImGui::PushItemWidth(120);
+    ImGui::PushItemWidth(120 * options::uiScale);
     // ImGui::Text("Background");
     // ImGui::SameLine();
     static std::string displayBackgroundName = "None";
@@ -354,11 +353,17 @@ void Engine::buildEngineGui() {
 
     // == Anti-aliasing
     ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
-    if (ImGui::TreeNode("Anti-Aliasing")) {
+    if (ImGui::TreeNode("Anti-Aliasing & DPI")) {
       if (ImGui::InputInt("SSAA (pretty)", &ssaaFactor, 1)) {
         ssaaFactor = std::min(ssaaFactor, 4);
         ssaaFactor = std::max(ssaaFactor, 1);
         options::ssaaFactor = ssaaFactor;
+        requestRedraw();
+      }
+
+      if (ImGui::InputFloat("UI Scale", &options::uiScale, 0.25f)) {
+        options::uiScale = std::min(options::uiScale, 4.f);
+        options::uiScale = std::max(options::uiScale, 0.25f);
         requestRedraw();
       }
       ImGui::TreePop();
@@ -482,7 +487,7 @@ void Engine::setScreenBufferViewports() {
 }
 
 bool Engine::bindSceneBuffer() {
-  setCurrentPixelScaling(ssaaFactor);
+  setCurrentPixelScaling(ssaaFactor * options::uiScale);
   return sceneBuffer->bindForRendering();
 }
 
@@ -509,7 +514,8 @@ void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture) {
   }
 
   // == Lazily regnerate the mapper if it doesn't match the current settings
-  if (!mapLight || currLightingSampleLevel != sampleLevel || currLightingTransparencyMode != transparencyMode || isCurrFlatLighting != options::useFlatLighting) {
+  if (!mapLight || currLightingSampleLevel != sampleLevel || currLightingTransparencyMode != transparencyMode ||
+      isCurrFlatLighting != options::useFlatLighting) {
 
     std::string sampleRuleName = "";
     if (sampleLevel == 1) sampleRuleName = "DOWNSAMPLE_RESOLVE_1";
@@ -532,7 +538,8 @@ void Engine::applyLightingTransform(std::shared_ptr<TextureBuffer>& texture) {
     if (!options::useFlatLighting) {
       mapLight = render::engine->requestShader("MAP_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
     } else {
-      mapLight = render::engine->requestShader("MAP_FLAT_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
+      mapLight =
+          render::engine->requestShader("MAP_FLAT_LIGHT", resolveRules, render::ShaderReplacementDefaults::Process);
     }
     mapLight->setAttribute("a_position", screenTrianglesCoords());
     currLightingSampleLevel = sampleLevel;
@@ -577,13 +584,11 @@ void Engine::setMaterialUniforms(ShaderProgram& program, const std::string& mat)
 void Engine::setCameraUniforms(ShaderProgram& program) {
   if (program.hasUniform("u_camWorldPos")) {
     glm::vec3 camWorldPos = view::getCameraWorldPosition();
-    program.setUniform("u_camWorldPos", camWorldPos); 
+    program.setUniform("u_camWorldPos", camWorldPos);
   }
 }
 
-void Engine::setLightUniforms(ShaderProgram& program) {
-  program.setLightUniform("ubo_pointLight");    
-}
+void Engine::setLightUniforms(ShaderProgram& program) { program.setLightUniform("ubo_pointLight"); }
 
 void Engine::renderBackground() {
   switch (background) {
@@ -1125,23 +1130,19 @@ const ValueColorMap& Engine::getColorMap(const std::string& name) {
 }
 
 
-void Engine::configureImGui() {
-
-  if (options::prepareImGuiFontsCallback) {
-    std::tie(globalFontAtlas, regularFont, monoFont) = options::prepareImGuiFontsCallback();
-  }
-
-
-  if (options::configureImGuiStyleCallback) {
-    options::configureImGuiStyleCallback();
-  }
-}
-
 void Engine::loadDefaultColorMap(std::string name) {
 
   const std::vector<glm::vec3>* buff = nullptr;
   if (name == "viridis") {
     buff = &CM_VIRIDIS;
+  } else if (name == "magma") {
+    buff = &CM_MAGMA;
+  } else if (name == "inferno") {
+    buff = &CM_INFERNO;
+  } else if (name == "plasma") {
+    buff = &CM_PLASMA;
+  } else if (name == "gray") {
+    buff = &CM_GRAY;
   } else if (name == "grayscale") {
     buff = &CM_GRAYSCALE;
   } else if (name == "coolwarm") {
@@ -1162,6 +1163,8 @@ void Engine::loadDefaultColorMap(std::string name) {
     buff = &CM_JET;
   } else if (name == "turbo") {
     buff = &CM_TURBO;
+  } else if (name == "hsv") {
+    buff = &CM_HSV;
   } else {
     exception("unrecognized default colormap " + name);
   }
@@ -1174,6 +1177,10 @@ void Engine::loadDefaultColorMap(std::string name) {
 
 void Engine::loadDefaultColorMaps() {
   loadDefaultColorMap("viridis");
+  loadDefaultColorMap("plasma");
+  loadDefaultColorMap("inferno");
+  loadDefaultColorMap("magma");
+  loadDefaultColorMap("gray");
   loadDefaultColorMap("grayscale");
   loadDefaultColorMap("coolwarm");
   loadDefaultColorMap("blues");
@@ -1184,8 +1191,28 @@ void Engine::loadDefaultColorMaps() {
   loadDefaultColorMap("rainbow");
   loadDefaultColorMap("jet");
   loadDefaultColorMap("turbo");
+  loadDefaultColorMap("hsv");
 }
 
+std::shared_ptr<TextureBuffer> Engine::getColorMapTexture2d(const std::string& cmapName) {
+  const ValueColorMap& colormap = render::engine->getColorMap(cmapName);
+
+  // Fill a buffer with the data
+  unsigned int dataLength = colormap.values.size() * 3;
+  std::vector<float> colorBuffer(dataLength);
+  for (unsigned int i = 0; i < colormap.values.size(); i++) {
+    colorBuffer[3 * i + 0] = static_cast<float>(colormap.values[i][0]);
+    colorBuffer[3 * i + 1] = static_cast<float>(colormap.values[i][1]);
+    colorBuffer[3 * i + 2] = static_cast<float>(colormap.values[i][2]);
+  }
+
+  std::shared_ptr<TextureBuffer> textureBuffer =
+      engine->generateTextureBuffer(TextureFormat::RGB32F, 1, colormap.values.size(), &(colorBuffer[0]));
+
+  textureBuffer->setFilterMode(FilterMode::Linear);
+
+  return textureBuffer;
+}
 
 void Engine::showTextureInImGuiWindow(std::string windowName, TextureBuffer* buffer) {
   ImGui::Begin(windowName.c_str());
@@ -1196,12 +1223,16 @@ void Engine::showTextureInImGuiWindow(std::string windowName, TextureBuffer* buf
   float h = w * buffer->getSizeY() / buffer->getSizeX();
 
   ImGui::Text("Dimensions: %dx%d", buffer->getSizeX(), buffer->getSizeY());
-  ImGui::Image(buffer->getNativeHandle(), ImVec2(w, h), ImVec2(0, 1), ImVec2(1, 0));
+  ImGui::Image((ImTextureID)(intptr_t)buffer->getNativeHandle(), ImVec2(w, h), ImVec2(0, 1), ImVec2(1, 0));
 
   ImGui::End();
 }
 
-ImFontAtlas* Engine::getImGuiGlobalFontAtlas() { return globalFontAtlas; }
+void Engine::preserveResourceUntilImguiFrameCompletes(std::shared_ptr<TextureBuffer> texture) {
+  resourcesPreservedForImGuiFrame.push_back(texture);
+}
+
+void Engine::clearResourcesPreservedForImguiFrame() { resourcesPreservedForImGuiFrame.clear(); }
 
 } // namespace render
 } // namespace polyscope

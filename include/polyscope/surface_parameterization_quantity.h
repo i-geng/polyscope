@@ -3,7 +3,6 @@
 #pragma once
 
 #include "polyscope/affine_remapper.h"
-#include "polyscope/histogram.h"
 #include "polyscope/parameterization_quantity.h"
 #include "polyscope/render/color_maps.h"
 #include "polyscope/render/engine.h"
@@ -48,6 +47,7 @@ protected:
   void createProgram();
   size_t nFaces(); // works around an incomplete def of the parent mesh
   virtual void fillCoordBuffers(render::ShaderProgram& p) = 0;
+  virtual std::vector<glm::vec2> getCornerCoords() = 0;
 };
 
 
@@ -66,6 +66,7 @@ public:
 
 protected:
   virtual void fillCoordBuffers(render::ShaderProgram& p) override;
+  virtual std::vector<glm::vec2> getCornerCoords() override;
 };
 
 
@@ -84,6 +85,7 @@ public:
 
 protected:
   virtual void fillCoordBuffers(render::ShaderProgram& p) override;
+  virtual std::vector<glm::vec2> getCornerCoords() override;
 };
 
 

@@ -33,6 +33,7 @@ PointCloud::PointCloud(std::string name, std::vector<glm::vec3> points_)
       material(uniquePrefix() + "material", "clay")
 // clang-format on
 {
+  points.checkInvalidValues();
   cullWholeElements.setPassive(true);
   updateObjectSpaceBounds();
 }
@@ -129,6 +130,26 @@ void PointCloud::drawPick() {
   setPointCloudUniforms(*pickProgram);
 
   pickProgram->draw();
+
+  for (auto& x : quantities) {
+    x.second->drawPick();
+  }
+  for (auto& x : floatingQuantities) {
+    x.second->drawPick();
+  }
+}
+
+void PointCloud::drawPickDelayed() {
+  if (!isEnabled()) {
+    return;
+  }
+
+  for (auto& x : quantities) {
+    x.second->drawPickDelayed();
+  }
+  for (auto& x : floatingQuantities) {
+    x.second->drawPickDelayed();
+  }
 }
 
 void PointCloud::ensureRenderProgramPrepared() {
@@ -185,6 +206,10 @@ void PointCloud::setPointProgramGeometryAttributes(render::ShaderProgram& p) {
     PointCloudScalarQuantity& radQ = resolvePointRadiusQuantity();
     p.setAttribute("a_pointRadius", radQ.values.getRenderAttributeBuffer());
   }
+  if (transparencyQuantityName != "") {
+    PointCloudScalarQuantity& transparencyQ = resolveTransparencyQuantity();
+    p.setAttribute("a_valueAlpha", transparencyQ.values.getRenderAttributeBuffer());
+  }
 }
 
 std::string PointCloud::getShaderNameForRenderMode() {
@@ -200,6 +225,25 @@ size_t PointCloud::nPoints() { return points.size(); }
 glm::vec3 PointCloud::getPointPosition(size_t iPt) { return points.getValue(iPt); }
 
 
+PointCloudPickResult PointCloud::interpretPickResult(const PickResult& rawResult) {
+  if (rawResult.structure != this) {
+    // caller must ensure that the PickResult belongs to this structure
+    // by checking the structure pointer or name
+    exception("called interpretPickResult(), but the pick result is not from this structure");
+  }
+
+  PointCloudPickResult result;
+
+  if (rawResult.localIndex < nPoints()) {
+    result.index = rawResult.localIndex;
+  } else {
+    exception("Bad pick index in point cloud");
+  }
+
+  return result;
+}
+
+
 std::vector<std::string> PointCloud::addPointCloudRules(std::vector<std::string> initRules, bool withPointCloud) {
   initRules = addStructureRules(initRules);
   if (withPointCloud) {
@@ -211,6 +255,9 @@ std::vector<std::string> PointCloud::addPointCloudRules(std::vector<std::string>
         initRules.push_back("SPHERE_CULLPOS_FROM_CENTER");
       else if (getPointRenderMode() == PointRenderMode::Quad)
         initRules.push_back("SPHERE_CULLPOS_FROM_CENTER_QUAD");
+    }
+    if (transparencyQuantityName != "") {
+      initRules.push_back("SPHERE_PROPAGATE_VALUEALPHA");
     }
   }
   return initRules;
@@ -232,10 +279,13 @@ PointCloudScalarQuantity& PointCloud::resolvePointRadiusQuantity() {
   return *sizeScalarQ;
 }
 
-void PointCloud::buildPickUI(size_t localPickID) {
-  ImGui::TextUnformatted(("#" + std::to_string(localPickID) + "  ").c_str());
+void PointCloud::buildPickUI(const PickResult& rawResult) {
+
+  PointCloudPickResult result = interpretPickResult(rawResult);
+
+  ImGui::TextUnformatted(("point #" + std::to_string(result.index) + "  ").c_str());
   ImGui::SameLine();
-  ImGui::TextUnformatted(to_string(getPointPosition(localPickID)).c_str());
+  ImGui::TextUnformatted(to_string(getPointPosition(result.index)).c_str());
 
   ImGui::Spacing();
   ImGui::Spacing();
@@ -246,7 +296,7 @@ void PointCloud::buildPickUI(size_t localPickID) {
   ImGui::Columns(2);
   ImGui::SetColumnWidth(0, ImGui::GetWindowWidth() / 3);
   for (auto& x : quantities) {
-    x.second->buildPickUI(localPickID);
+    x.second->buildPickUI(result.index);
   }
 
   ImGui::Indent(-20.);
@@ -258,7 +308,7 @@ void PointCloud::buildCustomUI() {
     setPointColor(getPointColor());
   }
   ImGui::SameLine();
-  ImGui::PushItemWidth(70);
+  ImGui::PushItemWidth(70 * options::uiScale);
   if (ImGui::SliderFloat("Radius", pointRadius.get().getValuePtr(), 0.0, .1, "%.5f",
                          ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat)) {
     pointRadius.manuallyChanged();
@@ -268,6 +318,11 @@ void PointCloud::buildCustomUI() {
 }
 
 void PointCloud::buildCustomOptionsUI() {
+  if (render::buildMaterialOptionsGui(material.get())) {
+    material.manuallyChanged();
+    setMaterial(material.get()); // trigger the other updates that happen on set()
+  }
+
   if (ImGui::BeginMenu("Point Render Mode")) {
 
     for (const PointRenderMode& m : {PointRenderMode::Sphere, PointRenderMode::Quad}) {
@@ -305,9 +360,21 @@ void PointCloud::buildCustomOptionsUI() {
     ImGui::EndMenu();
   }
 
-  if (render::buildMaterialOptionsGui(material.get())) {
-    material.manuallyChanged();
-    setMaterial(material.get()); // trigger the other updates that happen on set()
+  // transparency quantity
+  if (ImGui::BeginMenu("Per-Point Transparency")) {
+
+    if (ImGui::MenuItem("none", nullptr, transparencyQuantityName == "")) clearTransparencyQuantity();
+    ImGui::Separator();
+
+    for (auto& q : quantities) {
+      PointCloudScalarQuantity* scalarQ = dynamic_cast<PointCloudScalarQuantity*>(q.second.get());
+      if (scalarQ != nullptr) {
+        if (ImGui::MenuItem(scalarQ->name.c_str(), nullptr, transparencyQuantityName == scalarQ->name))
+          setTransparencyQuantity(scalarQ);
+      }
+    }
+
+    ImGui::EndMenu();
   }
 }
 
@@ -360,6 +427,42 @@ void PointCloud::setPointRadiusQuantity(std::string name, bool autoScale) {
 void PointCloud::clearPointRadiusQuantity() {
   pointRadiusQuantityName = "";
   refresh();
+}
+
+void PointCloud::setTransparencyQuantity(PointCloudScalarQuantity* quantity) {
+  setTransparencyQuantity(quantity->name);
+}
+
+void PointCloud::setTransparencyQuantity(std::string name) {
+  transparencyQuantityName = name;
+  resolveTransparencyQuantity(); // do it once, just so we fail fast if it doesn't exist
+
+  // if transparency is disabled, enable it
+  if (options::transparencyMode == TransparencyMode::None) {
+    options::transparencyMode = TransparencyMode::Pretty;
+  }
+
+  refresh();
+}
+
+void PointCloud::clearTransparencyQuantity() {
+  transparencyQuantityName = "";
+  refresh();
+}
+
+PointCloudScalarQuantity& PointCloud::resolveTransparencyQuantity() {
+  PointCloudScalarQuantity* transparencyScalarQ = nullptr;
+  PointCloudQuantity* anyQ = getQuantity(transparencyQuantityName);
+  if (anyQ != nullptr) {
+    transparencyScalarQ = dynamic_cast<PointCloudScalarQuantity*>(anyQ);
+    if (transparencyScalarQ == nullptr) {
+      exception("Cannot populate per-element transparency from quantity [" + name + "], it is not a scalar quantity");
+    }
+  } else {
+    exception("Cannot populate per-element transparency from quantity [" + name + "], it does not exist");
+  }
+
+  return *transparencyScalarQ;
 }
 
 // === Quantities

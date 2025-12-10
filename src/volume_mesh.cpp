@@ -135,6 +135,7 @@ edgeWidth(uniquePrefix() + "edgeWidth", 0.),
 activeLevelSetQuantity(nullptr) 
 {
   // clang-format on
+  vertexPositions.checkInvalidValues();
 
   cullWholeElements.setPassive(true);
 
@@ -485,10 +486,31 @@ void VolumeMesh::drawPick() {
   // Set uniforms
   setVolumeMeshUniforms(*pickProgram);
   setStructureUniforms(*pickProgram);
+  pickProgram->setUniform("u_vertPickRadius", 0.2);
   render::engine->setCameraUniforms(*pickProgram);
   render::engine->setLightUniforms(*pickProgram);
 
   pickProgram->draw();
+
+  for (auto& x : quantities) {
+    x.second->drawPick();
+  }
+  for (auto& x : floatingQuantities) {
+    x.second->drawPick();
+  }
+}
+
+void VolumeMesh::drawPickDelayed() {
+  if (!isEnabled()) {
+    return;
+  }
+
+  for (auto& x : quantities) {
+    x.second->drawPickDelayed();
+  }
+  for (auto& x : floatingQuantities) {
+    x.second->drawPickDelayed();
+  }
 }
 
 void VolumeMesh::prepare() {
@@ -802,14 +824,49 @@ void VolumeMesh::computeCellCenters() {
   cellCenters.markHostBufferUpdated();
 }
 
-void VolumeMesh::buildPickUI(size_t localPickID) {
+
+VolumeMeshPickResult VolumeMesh::interpretPickResult(const PickResult& rawResult) {
+
+  if (rawResult.structure != this) {
+    // caller must ensure that the PickResult belongs to this structure
+    // by checking the structure pointer or name
+    exception("called interpretPickResult(), but the pick result is not from this structure");
+  }
+
+  VolumeMeshPickResult result;
 
   // Selection type
-  if (localPickID < cellPickIndStart) {
-    buildVertexInfoGui(localPickID);
+  if (rawResult.localIndex < cellPickIndStart) {
+    result.elementType = VolumeMeshElement::VERTEX;
+    result.index = rawResult.localIndex;
+  } else if (rawResult.localIndex < nVertices() + nCells()) {
+    result.elementType = VolumeMeshElement::CELL;
+    result.index = rawResult.localIndex - cellPickIndStart;
   } else {
-    buildCellInfoGUI(localPickID - cellPickIndStart);
+    exception("Bad pick index in volume mesh");
   }
+
+  return result;
+}
+
+void VolumeMesh::buildPickUI(const PickResult& rawResult) {
+
+  VolumeMeshPickResult result = interpretPickResult(rawResult);
+
+  switch (result.elementType) {
+  case VolumeMeshElement::VERTEX: {
+    buildVertexInfoGui(result.index);
+    break;
+  }
+  case VolumeMeshElement::CELL: {
+    buildCellInfoGUI(result.index);
+    break;
+  }
+  default: {
+    /* do nothing */
+    break;
+  }
+  };
 }
 
 void VolumeMesh::buildVertexInfoGui(size_t vInd) {
@@ -874,7 +931,7 @@ void VolumeMesh::buildCustomUI() {
 
   ImGui::SameLine();
   { // Edge options
-    ImGui::PushItemWidth(100);
+    ImGui::PushItemWidth(100 * options::uiScale);
     if (edgeWidth.get() == 0.) {
       bool showEdges = false;
       if (ImGui::Checkbox("Edges", &showEdges)) {
@@ -887,14 +944,14 @@ void VolumeMesh::buildCustomUI() {
       }
 
       // Edge color
-      ImGui::PushItemWidth(100);
+      ImGui::PushItemWidth(100 * options::uiScale);
       if (ImGui::ColorEdit3("Edge Color", &edgeColor.get()[0], ImGuiColorEditFlags_NoInputs))
         setEdgeColor(edgeColor.get());
       ImGui::PopItemWidth();
 
       // Edge width
       ImGui::SameLine();
-      ImGui::PushItemWidth(60);
+      ImGui::PushItemWidth(60 * options::uiScale);
       if (ImGui::SliderFloat("Width", &edgeWidth.get(), 0.001, 2.)) {
         // NOTE: this intentionally circumvents the setEdgeWidth() setter to avoid repopulating the buffer as the
         // slider is dragged---otherwise we repopulate the buffer on every change, which mostly works fine. This is a

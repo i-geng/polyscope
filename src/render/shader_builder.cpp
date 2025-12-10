@@ -9,8 +9,7 @@
 namespace polyscope {
 namespace render {
 
-std::string substituteReplacementRules(std::string progText,
-                                       std::map<std::string, std::string> replacements) {
+std::string substituteReplacementRules(std::string progText, std::map<std::string, std::string> replacements) {
   bool debugPrint = false;
   const auto npos = std::string::npos;
   const std::string startTagToken = "${ ";
@@ -110,8 +109,8 @@ applyShaderReplacements(const std::vector<ShaderStageSpecification>& stages,
     //     if (debugPrint) std::cout << "FOUND TAG: " << tagStart << " " << tagEnd << std::endl;
 
     //     std::string srcBefore = progText.substr(0, tagStart);
-    //     std::string tag = progText.substr(tagStart + startTagToken.size(), tagEnd - (tagStart + startTagToken.size()));
-    //     std::string srcAfter = progText.substr(tagEnd + endTagToken.size(), npos);
+    //     std::string tag = progText.substr(tagStart + startTagToken.size(), tagEnd - (tagStart +
+    //     startTagToken.size())); std::string srcAfter = progText.substr(tagEnd + endTagToken.size(), npos);
 
     //     if (debugPrint) std::cout << "  TAG NAME: [" << tag << "]\n";
 

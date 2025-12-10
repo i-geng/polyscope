@@ -33,11 +33,8 @@ namespace polyscope {
 namespace render {
 namespace backend_openGL_mock {
 
-
-MockGLEngine* glEngine = nullptr; // alias for engine pointer
-
 void initializeRenderEngine() {
-  glEngine = new MockGLEngine();
+  MockGLEngine* glEngine = new MockGLEngine();
   engine = glEngine;
   glEngine->initialize();
   engine->allocateGlobalBuffersAndPrograms();
@@ -874,7 +871,7 @@ void GLShaderProgram::assignBufferToVAO(GLShaderAttribute& a) {
 void GLShaderProgram::createBuffer(GLShaderAttribute& a) {
 
   // generate the buffer if needed
-  std::shared_ptr<AttributeBuffer> newBuff = glEngine->generateAttributeBuffer(a.type, a.arrayCount);
+  std::shared_ptr<AttributeBuffer> newBuff = engine->generateAttributeBuffer(a.type, a.arrayCount);
   std::shared_ptr<GLAttributeBuffer> engineNewBuff = std::dynamic_pointer_cast<GLAttributeBuffer>(newBuff);
   if (!engineNewBuff) throw std::invalid_argument("buffer type cast failed");
   a.buff = engineNewBuff;
@@ -1562,13 +1559,14 @@ MockGLEngine::MockGLEngine() {}
 
 void MockGLEngine::initialize() {
 
-  if (options::verbosity > 0) {
-    std::cout << options::printPrefix << "Backend: openGL_mock" << std::endl;
-  }
+  info(0, "Backend: openGL_mock");
 
   GLFrameBuffer* glScreenBuffer = new GLFrameBuffer(view::bufferWidth, view::bufferHeight, true);
   displayBuffer.reset(glScreenBuffer);
 
+  if (options::uiScale < 0) { // only set from system if the value is -1, meaning not set yet
+    options::uiScale = 1.;
+  }
 
   // normally we get initial values for the buffer size from the window framework,
   // with the mock backend we we need to manually set them to some sane value
@@ -1582,10 +1580,32 @@ void MockGLEngine::initialize() {
 
 void MockGLEngine::initializeImGui() {
   ImGui::CreateContext(); // must call once at start
+  ImPlot::CreateContext(); 
   configureImGui();
 }
 
-void MockGLEngine::shutdownImGui() { ImGui::DestroyContext(); }
+void MockGLEngine::configureImGui() {
+  
+  // don't both calling the style callbacks, there is no UI
+
+  if (options::uiScale < 0) {
+    exception("uiScale is < 0. Perhaps it wasn't initialized?");
+  }
+
+  ImGuiIO& io = ImGui::GetIO();
+  io.Fonts->Clear();
+  io.Fonts->Build();
+}
+
+void MockGLEngine::shutdown() {
+  checkError();
+  shutdownImGui();
+}
+
+void MockGLEngine::shutdownImGui() { 
+  ImPlot::DestroyContext(); 
+  ImGui::DestroyContext(); 
+}
 
 void MockGLEngine::swapDisplayBuffers() {}
 
@@ -1651,8 +1671,6 @@ void MockGLEngine::pollEvents() {}
 
 bool MockGLEngine::isKeyPressed(char c) { return false; }
 
-int MockGLEngine::getKeyCode(char c) { return 77; }
-
 void MockGLEngine::ImGuiNewFrame() {
 
   // ImGUI seems to crash without a backend if we don't do this
@@ -1663,7 +1681,10 @@ void MockGLEngine::ImGuiNewFrame() {
   ImGui::NewFrame();
 }
 
-void MockGLEngine::ImGuiRender() { ImGui::Render(); }
+void MockGLEngine::ImGuiRender() {
+  ImGui::Render();
+  clearResourcesPreservedForImguiFrame();
+}
 
 void MockGLEngine::setDepthMode(DepthMode newMode) {}
 
@@ -1906,6 +1927,7 @@ void MockGLEngine::populateDefaultShadersAndRules() {
   registerShaderProgram("RAYCAST_TANGENT_VECTOR", {FLEX_TANGENT_VECTOR_VERT_SHADER, FLEX_VECTOR_GEOM_SHADER, FLEX_VECTOR_FRAG_SHADER}, DrawMode::Points);
   registerShaderProgram("RAYCAST_CYLINDER", {FLEX_CYLINDER_VERT_SHADER, FLEX_CYLINDER_GEOM_SHADER, FLEX_CYLINDER_FRAG_SHADER}, DrawMode::Points);
   registerShaderProgram("HISTOGRAM", {HISTOGRAM_VERT_SHADER, HISTOGRAM_FRAG_SHADER}, DrawMode::Triangles);
+  registerShaderProgram("HISTOGRAM_CATEGORICAL", {HISTOGRAM_VERT_SHADER, HISTOGRAM_CATEGORICAL_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("GROUND_PLANE_TILE", {GROUND_PLANE_VERT_SHADER, GROUND_PLANE_TILE_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("GROUND_PLANE_TILE_REFLECT", {GROUND_PLANE_VERT_SHADER, GROUND_PLANE_TILE_REFLECT_FRAG_SHADER}, DrawMode::Triangles);
   registerShaderProgram("GROUND_PLANE_SHADOW", {GROUND_PLANE_VERT_SHADER, GROUND_PLANE_SHADOW_FRAG_SHADER}, DrawMode::Triangles);
@@ -1952,6 +1974,7 @@ void MockGLEngine::populateDefaultShadersAndRules() {
   registerShaderRule("LIGHT_PASSTHRU", LIGHT_PASSTHRU);
   registerShaderRule("SHADE_BASECOLOR", SHADE_BASECOLOR);
   registerShaderRule("SHADE_COLOR", SHADE_COLOR);
+  registerShaderRule("SHADE_CATEGORICAL_COLORMAP", SHADE_CATEGORICAL_COLORMAP);
   registerShaderRule("SHADECOLOR_FROM_UNIFORM", SHADECOLOR_FROM_UNIFORM);
   registerShaderRule("SHADE_COLORMAP_VALUE", SHADE_COLORMAP_VALUE);
   registerShaderRule("SHADE_COLORMAP_ANGULAR2", SHADE_COLORMAP_ANGULAR2);
@@ -1961,6 +1984,7 @@ void MockGLEngine::populateDefaultShadersAndRules() {
   registerShaderRule("SHADEVALUE_MAG_VALUE2", SHADEVALUE_MAG_VALUE2);
   registerShaderRule("ISOLINE_STRIPE_VALUECOLOR", ISOLINE_STRIPE_VALUECOLOR);
   registerShaderRule("CHECKER_VALUE2COLOR", CHECKER_VALUE2COLOR);
+  registerShaderRule("CONTOUR_VALUECOLOR", CONTOUR_VALUECOLOR);
   registerShaderRule("INVERSE_TONEMAP", INVERSE_TONEMAP);
  
   // Texture and image things
@@ -1985,7 +2009,9 @@ void MockGLEngine::populateDefaultShadersAndRules() {
   registerShaderRule("MESH_BACKFACE_DIFFERENT", MESH_BACKFACE_DIFFERENT);
   registerShaderRule("MESH_BACKFACE_DARKEN", MESH_BACKFACE_DARKEN);
   registerShaderRule("MESH_PROPAGATE_VALUE", MESH_PROPAGATE_VALUE);
+  registerShaderRule("MESH_PROPAGATE_VALUEALPHA", MESH_PROPAGATE_VALUEALPHA);
   registerShaderRule("MESH_PROPAGATE_FLAT_VALUE", MESH_PROPAGATE_FLAT_VALUE);
+  registerShaderRule("MESH_PROPAGATE_VALUE_CORNER_NEAREST", MESH_PROPAGATE_VALUE_CORNER_NEAREST);
   registerShaderRule("MESH_PROPAGATE_VALUE2", MESH_PROPAGATE_VALUE2);
   registerShaderRule("MESH_PROPAGATE_TCOORD", MESH_PROPAGATE_TCOORD);
   registerShaderRule("MESH_PROPAGATE_COLOR", MESH_PROPAGATE_COLOR);
@@ -2004,6 +2030,7 @@ void MockGLEngine::populateDefaultShadersAndRules() {
 
   // sphere things
   registerShaderRule("SPHERE_PROPAGATE_VALUE", SPHERE_PROPAGATE_VALUE);
+  registerShaderRule("SPHERE_PROPAGATE_VALUEALPHA", SPHERE_PROPAGATE_VALUEALPHA);
   registerShaderRule("SPHERE_PROPAGATE_VALUE2", SPHERE_PROPAGATE_VALUE2);
   registerShaderRule("SPHERE_PROPAGATE_COLOR", SPHERE_PROPAGATE_COLOR);
   registerShaderRule("SPHERE_CULLPOS_FROM_CENTER", SPHERE_CULLPOS_FROM_CENTER);
@@ -2018,6 +2045,7 @@ void MockGLEngine::populateDefaultShadersAndRules() {
   // cylinder things
   registerShaderRule("CYLINDER_PROPAGATE_VALUE", CYLINDER_PROPAGATE_VALUE);
   registerShaderRule("CYLINDER_PROPAGATE_BLEND_VALUE", CYLINDER_PROPAGATE_BLEND_VALUE);
+  registerShaderRule("CYLINDER_PROPAGATE_NEAREST_VALUE", CYLINDER_PROPAGATE_NEAREST_VALUE);
   registerShaderRule("CYLINDER_PROPAGATE_COLOR", CYLINDER_PROPAGATE_COLOR);
   registerShaderRule("CYLINDER_PROPAGATE_BLEND_COLOR", CYLINDER_PROPAGATE_BLEND_COLOR);
   registerShaderRule("CYLINDER_PROPAGATE_PICK", CYLINDER_PROPAGATE_PICK);

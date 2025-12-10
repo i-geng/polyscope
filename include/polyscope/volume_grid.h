@@ -26,6 +26,10 @@ struct QuantityTypeHelper<VolumeGrid> {
   typedef VolumeGridQuantity type;
 };
 
+struct VolumeGridPickResult {
+  VolumeGridElement elementType; // which kind of element did we click
+  int64_t index;                 // index of the clicked element
+};
 
 class VolumeGrid : public QuantityStructure<VolumeGrid> {
 public:
@@ -38,6 +42,7 @@ public:
   virtual void draw() override;
   virtual void drawDelayed() override;
   virtual void drawPick() override;
+  virtual void drawPickDelayed() override;
   virtual void updateObjectSpaceBounds() override;
   virtual std::string typeName() override;
   virtual void refresh() override;
@@ -45,7 +50,7 @@ public:
   // Build the imgui display
   virtual void buildCustomUI() override;
   virtual void buildCustomOptionsUI() override;
-  virtual void buildPickUI(size_t localPickID) override;
+  virtual void buildPickUI(const PickResult& result) override;
 
   // Misc data
   static const std::string structureTypeName;
@@ -117,6 +122,9 @@ public:
   // force the grid to act as if the specified elements are in use (aka enable them for picking, etc)
   void markNodesAsUsed();
   void markCellsAsUsed();
+  
+  // get data related to picking/selection
+  VolumeGridPickResult interpretPickResult(const PickResult& result);
 
   // === Getters and setters for visualization settings
 
@@ -169,8 +177,8 @@ private:
   // These starts are LOCAL indices, indexing elements only with the mesh
   size_t globalPickConstant = INVALID_IND_64;
   glm::vec3 pickColor;
-  void buildNodeInfoGUI(size_t vInd);
-  void buildCellInfoGUI(size_t cInd);
+  void buildNodeInfoGUI(const VolumeGridPickResult& result);
+  void buildCellInfoGUI(const VolumeGridPickResult& result);
   bool nodesHaveBeenUsed = false;
   bool cellsHaveBeenUsed = false;
   

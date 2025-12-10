@@ -36,6 +36,7 @@ class SurfaceFaceColorQuantity;
 class SurfaceFaceTetracolorQuantity;
 class SurfaceFaceSixChannelColorQuantity;
 class SurfaceTextureColorQuantity;
+class SurfaceScalarQuantity;
 class SurfaceVertexScalarQuantity;
 class SurfaceFaceScalarQuantity;
 class SurfaceEdgeScalarQuantity;
@@ -57,6 +58,11 @@ struct QuantityTypeHelper<SurfaceMesh> {
   typedef SurfaceMeshQuantity type;
 };
 
+struct SurfaceMeshPickResult {
+  MeshElement elementType;                        // which kind of element did we click
+  int64_t index;                                  // index of the clicked element
+  glm::vec3 baryCoords = glm::vec3{-1., -1., -1}; // coordinates in face, populated only for triangular face picks
+};
 
 // === The grand surface mesh class
 
@@ -81,12 +87,13 @@ public:
   // Build the imgui display
   virtual void buildCustomUI() override;
   virtual void buildCustomOptionsUI() override;
-  virtual void buildPickUI(size_t localPickID) override;
+  virtual void buildPickUI(const PickResult&) override;
 
   // Render the the structure on screen
   virtual void draw() override;
   virtual void drawDelayed() override;
   virtual void drawPick() override;
+  virtual void drawPickDelayed() override;
   virtual void updateObjectSpaceBounds() override;
   virtual std::string typeName() override;
   virtual void refresh() override;
@@ -108,6 +115,7 @@ public:
   render::ManagedBuffer<uint32_t> triangleFaceInds;   // on triangulated mesh [3 * nTriFace]
   render::ManagedBuffer<uint32_t> triangleCornerInds; // on triangulated mesh [3 * nTriFace]
   // these next 3 use the ***perm if it has been set
+  render::ManagedBuffer<uint32_t> triangleAllVertexInds;   // on triangulated mesh, all 3 [3 * 3 * nTriFace]
   render::ManagedBuffer<uint32_t> triangleAllEdgeInds;     // on triangulated mesh, all 3 [3 * 3 * nTriFace]
   render::ManagedBuffer<uint32_t> triangleAllHalfedgeInds; // on triangulated mesh, all 3 [3 * 3 * nTriFace]
   render::ManagedBuffer<uint32_t> triangleAllCornerInds;   // on triangulated mesh, all 3 [3 * 3 * nTriFace]
@@ -177,8 +185,10 @@ public:
   // special quantity-related methods
   SurfaceParameterizationQuantity* getParameterization(std::string name);
 
+  // get data related to picking/selection
+  SurfaceMeshPickResult interpretPickResult(const PickResult& result);
 
-  // === Make a one-time selection
+  // Make a one-time selection
   long long int selectVertex();
 
   // === Mutate
@@ -188,6 +198,13 @@ public:
   void updateVertexPositions(const V& newPositions);
   template <class V>
   void updateVertexPositions2D(const V& newPositions2D);
+
+  // === Set transparency alpha from a scalar quantity
+  // effect is multiplicative with other transparency values
+  // values are clamped to [0,1]
+  void setTransparencyQuantity(SurfaceScalarQuantity* quantity);
+  void setTransparencyQuantity(std::string name);
+  void clearTransparencyQuantity();
 
 
   // === Indexing conventions
@@ -287,6 +304,10 @@ public:
   SurfaceMesh* setShadeStyle(MeshShadeStyle newStyle);
   MeshShadeStyle getShadeStyle();
 
+  // Selection mode
+  SurfaceMesh* setSelectionMode(MeshSelectionMode newMode);
+  MeshSelectionMode getSelectionMode();
+
   // == Rendering helpers used by quantities
 
   // void fillGeometryBuffers(render::ShaderProgram& p);
@@ -320,6 +341,7 @@ private:
   std::vector<uint32_t> triangleVertexIndsData;      // index of the corresponding vertex
   std::vector<uint32_t> triangleFaceIndsData;        // index of the corresponding original face
   std::vector<uint32_t> triangleCornerIndsData;      // index of the corresponding original corner
+  std::vector<uint32_t> triangleAllVertexIndsData;   // index of the corresponding original vertex
   std::vector<uint32_t> triangleAllEdgeIndsData;     // index of the corresponding original edge
   std::vector<uint32_t> triangleAllHalfedgeIndsData; // index of the corresponding original halfedge
   std::vector<uint32_t> triangleAllCornerIndsData;   // index of the corresponding original corner
@@ -357,14 +379,15 @@ private:
   PersistentValue<BackFacePolicy> backFacePolicy;
   PersistentValue<glm::vec3> backFaceColor;
   PersistentValue<MeshShadeStyle> shadeStyle;
+  PersistentValue<MeshSelectionMode> selectionMode;
 
   // Do setup work related to drawing, including allocating openGL data
   void prepare();
   void preparePick();
 
-
   /// == Compute indices & geometry data
   void computeTriangleCornerInds();
+  void computeTriangleAllVertexInds();
   void computeTriangleAllEdgeInds();
   void computeTriangleAllHalfedgeInds();
   void computeTriangleAllCornerInds();
@@ -383,16 +406,24 @@ private:
   // Within each set, uses the implicit ordering from the mesh data structure
   // These starts are LOCAL indices, indexing elements only with the mesh
   size_t facePickIndStart, edgePickIndStart, halfedgePickIndStart, cornerPickIndStart;
-  void buildVertexInfoGui(size_t vInd);
-  void buildFaceInfoGui(size_t fInd);
-  void buildEdgeInfoGui(size_t eInd);
-  void buildHalfedgeInfoGui(size_t heInd);
-  void buildCornerInfoGui(size_t cInd);
+  void buildVertexInfoGui(const SurfaceMeshPickResult& result);
+  void buildFaceInfoGui(const SurfaceMeshPickResult& result);
+  void buildEdgeInfoGui(const SurfaceMeshPickResult& result);
+  void buildHalfedgeInfoGui(const SurfaceMeshPickResult& result);
+  void buildCornerInfoGui(const SurfaceMeshPickResult& result);
+
+  // Manage per-element transparency
+  // which (scalar) quantity to set point size from
+  // TODO make these PersistentValue<>?
+  std::string transparencyQuantityName = "";            // empty string means none
+  SurfaceScalarQuantity& resolveTransparencyQuantity(); // helper
+
 
   // ==== Gui implementation details
 
   std::shared_ptr<render::ShaderProgram> program;
   std::shared_ptr<render::ShaderProgram> pickProgram;
+  bool usingSimplePick = false;
 
 
   // === Helper functions

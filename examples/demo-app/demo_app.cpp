@@ -51,62 +51,57 @@ void constructDemoCurveNetwork(std::string curveName, std::vector<glm::vec3> nod
 
   { // Add some node values
     std::vector<double> valX(nNodes);
+    std::vector<double> valNodeCat(nNodes);
     std::vector<double> valXabs(nNodes);
     std::vector<std::array<double, 3>> randColor(nNodes);
     std::vector<glm::vec3> randVec(nNodes);
     for (size_t iN = 0; iN < nNodes; iN++) {
       valX[iN] = nodes[iN].x;
+      valNodeCat[iN] = iN * 5 / nNodes;
       valXabs[iN] = std::fabs(nodes[iN].x);
       randColor[iN] = {{polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit()}};
       randVec[iN] = glm::vec3{polyscope::randomUnit() - .5, polyscope::randomUnit() - .5, polyscope::randomUnit() - .5};
     }
     polyscope::getCurveNetwork(curveName)->addNodeScalarQuantity("nX", valX);
     polyscope::getCurveNetwork(curveName)->addNodeScalarQuantity("nXabs", valXabs);
+    polyscope::getCurveNetwork(curveName)->addNodeScalarQuantity("node categorical", valNodeCat,
+                                                                 polyscope::DataType::CATEGORICAL);
     polyscope::getCurveNetwork(curveName)->addNodeColorQuantity("nColor", randColor);
     polyscope::getCurveNetwork(curveName)->addNodeVectorQuantity("randVecN", randVec);
   }
 
   { // Add some edge values
     std::vector<double> edgeLen(nEdges);
+    std::vector<double> valEdgeCat(nEdges);
     std::vector<std::array<double, 3>> randColor(nEdges);
     std::vector<glm::vec3> randVec(nEdges);
+    std::vector<double> valYabs(nEdges);
     for (size_t iE = 0; iE < nEdges; iE++) {
       auto edge = edges[iE];
       size_t nA = std::get<0>(edge);
       size_t nB = std::get<1>(edge);
+      glm::vec3 posA = nodes[nA];
+      glm::vec3 posB = nodes[nB];
+      glm::vec3 midpointPos = 0.5f * (posA + posB);
 
       edgeLen[iE] = glm::length(nodes[nA] - nodes[nB]);
+      valEdgeCat[iE] = iE * 5 / nEdges;
       randColor[iE] = {{polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit()}};
       randVec[iE] = glm::vec3{polyscope::randomUnit() - .5, polyscope::randomUnit() - .5, polyscope::randomUnit() - .5};
+      valYabs[iE] = std::fabs(midpointPos.y);
     }
     polyscope::getCurveNetwork(curveName)->addEdgeScalarQuantity("edge len", edgeLen, polyscope::DataType::MAGNITUDE);
+    polyscope::getCurveNetwork(curveName)->addEdgeScalarQuantity("edge valYabs", valYabs,
+                                                                 polyscope::DataType::MAGNITUDE);
+    polyscope::getCurveNetwork(curveName)->addEdgeScalarQuantity("edge categorical", valEdgeCat,
+                                                                 polyscope::DataType::CATEGORICAL);
     polyscope::getCurveNetwork(curveName)->addEdgeColorQuantity("eColor", randColor);
     polyscope::getCurveNetwork(curveName)->addEdgeVectorQuantity("randVecE", randVec);
   }
 
   // set a node radius quantity from above
   polyscope::getCurveNetwork(curveName)->setNodeRadiusQuantity("nXabs");
-}
-
-void rotate_teapot() {
-  std::string name = "teapot";
-  auto psMesh = polyscope::getSurfaceMesh(name);
-  
-  // FILE* fd = polyscope::openVideoFile("teapot.mp4");
-  
-  auto tfds = polyscope::openTetraVideoFile("teapot.mp4");
-
-  for (size_t i = 0; i < 30; i++) {
-    // glm::mat4x4 currentTransform = psMesh->getTransform();
-    // glm::mat4x4 nextTransform = glm::rotate(currentTransform, glm::radians(0.25f), glm::vec3(0.0, 1.0, 0.0));
-    // psMesh->setTransform(nextTransform);
-
-    polyscope::writeTetraVideoFrame(tfds);
-    // polyscope::writeVideoFrame(fd);
-    // polyscope::screenshot();
-  }
-  // polyscope::closeVideoFile(fd);
-  exit(0);
+  polyscope::getCurveNetwork(curveName)->setEdgeRadiusQuantity("edge valYabs");
 }
 
 void processFileOBJ(std::string filename) {
@@ -141,17 +136,19 @@ void processFileOBJ(std::string filename) {
 
   // std::vector<polyscope::Tetracolor> vertexColors(vertexPositions.size());
   // for (size_t i = 0; i < vertexPositions.size(); i++) {
-  //   vertexColors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit());
+  //   vertexColors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(),
+  //   polyscope::randomUnit(), polyscope::randomUnit());
   // }
   // psMesh->addVertexColorQuantity("random colors", vertexColors);
 
   // Add random color to each face
   // std::vector<polyscope::Tetracolor> faceColors(faceIndices.size());
   // for (size_t i = 0; i < faceIndices.size(); i++) {
-  //   faceColors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit());
+  //   faceColors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(),
+  //   polyscope::randomUnit());
   // }
   // psMesh->addFaceColorQuantity("random colors", faceColors);
-  
+
   std::vector<glm::vec3> colorsEven(faceIndices.size());
   std::vector<glm::vec3> colorsOdd(faceIndices.size());
   for (size_t i = 0; i < faceIndices.size(); i++) {
@@ -165,6 +162,7 @@ void processFileOBJ(std::string filename) {
   return;
 
   auto psSimpleMesh = polyscope::registerSimpleTriangleMesh(niceName, vertexPositionsGLM, faceIndices);
+  psSimpleMesh->setEnabled(false);
 
   // Useful data
   size_t nVertices = psMesh->nVertices();
@@ -175,21 +173,26 @@ void processFileOBJ(std::string filename) {
   std::vector<double> valY(nVertices);
   std::vector<double> valZ(nVertices);
   std::vector<double> valMag(nVertices);
+  std::vector<double> valCat(nVertices);
   std::vector<std::array<double, 3>> randColor(nVertices);
   for (size_t iV = 0; iV < nVertices; iV++) {
     valX[iV] = vertexPositionsGLM[iV].x / 10000;
     valY[iV] = vertexPositionsGLM[iV].y;
     valZ[iV] = vertexPositionsGLM[iV].z;
     valMag[iV] = glm::length(vertexPositionsGLM[iV]);
+    valCat[iV] = (int32_t)(iV * 7 / nVertices) - 2;
 
     randColor[iV] = {{polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit()}};
   }
   polyscope::getSurfaceMesh(niceName)->addVertexScalarQuantity("cX_really_really_stupid_long_name_how_dumb", valX);
-  polyscope::getSurfaceMesh(niceName)->addVertexScalarQuantity("cY", valY);
+  auto q = polyscope::getSurfaceMesh(niceName)->addVertexScalarQuantity("cY", valY);
+  q->setOnscreenColorbarEnabled(true); // set the onscreen colormap for this one
   polyscope::getSurfaceMesh(niceName)->addVertexScalarQuantity("cZ", valZ);
   polyscope::getSurfaceMesh(niceName)->addVertexColorQuantity("vColor", randColor);
   polyscope::getSurfaceMesh(niceName)->addVertexScalarQuantity("cY_sym", valY, polyscope::DataType::SYMMETRIC);
   polyscope::getSurfaceMesh(niceName)->addVertexScalarQuantity("cNorm", valMag, polyscope::DataType::MAGNITUDE);
+  polyscope::getSurfaceMesh(niceName)->addVertexScalarQuantity("categorical vert", valCat,
+                                                               polyscope::DataType::CATEGORICAL);
 
   polyscope::getSurfaceMesh(niceName)->addVertexDistanceQuantity("cY_dist", valY);
   polyscope::getSurfaceMesh(niceName)->addVertexSignedDistanceQuantity("cY_signeddist", valY);
@@ -198,6 +201,7 @@ void processFileOBJ(std::string filename) {
   // Add some face scalars
   std::vector<double> fArea(nFaces);
   std::vector<double> zero(nFaces);
+  std::vector<double> fCat(nFaces);
   std::vector<std::array<double, 3>> fColor(nFaces);
   for (size_t iF = 0; iF < nFaces; iF++) {
     std::vector<size_t>& face = faceIndices[iF];
@@ -214,10 +218,13 @@ void processFileOBJ(std::string filename) {
 
     zero[iF] = 0;
     fColor[iF] = {{polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit()}};
+    fCat[iF] = (int32_t)(iF * 25 / nFaces) - 12;
   }
   polyscope::getSurfaceMesh(niceName)->addFaceScalarQuantity("face area", fArea, polyscope::DataType::MAGNITUDE);
   polyscope::getSurfaceMesh(niceName)->addFaceScalarQuantity("zero", zero);
   polyscope::getSurfaceMesh(niceName)->addFaceColorQuantity("fColor", fColor);
+  polyscope::getSurfaceMesh(niceName)->addFaceScalarQuantity("categorical face", fCat,
+                                                             polyscope::DataType::CATEGORICAL);
 
 
   // size_t nEdges = psMesh->nEdges();
@@ -226,15 +233,19 @@ void processFileOBJ(std::string filename) {
   std::vector<double> eLen;
   std::vector<double> heLen;
   std::vector<double> cAngle;
+  std::vector<double> cID;
+  std::vector<double> eCat;
+  std::vector<double> heCat;
+  std::vector<double> cCat;
   std::unordered_set<std::pair<size_t, size_t>, polyscope::hash_combine::hash<std::pair<size_t, size_t>>> seenEdges;
   std::vector<uint32_t> edgeOrdering;
   for (size_t iF = 0; iF < nFaces; iF++) {
     std::vector<size_t>& face = faceIndices[iF];
 
-    for (size_t iV = 0; iV < face.size(); iV++) {
-      size_t i0 = face[iV];
-      size_t i1 = face[(iV + 1) % face.size()];
-      size_t im1 = face[(iV + face.size() - 1) % face.size()];
+    for (size_t iC = 0; iC < face.size(); iC++) {
+      size_t i0 = face[iC];
+      size_t i1 = face[(iC + 1) % face.size()];
+      size_t im1 = face[(iC + face.size() - 1) % face.size()];
       glm::vec3 p0 = vertexPositionsGLM[i0];
       glm::vec3 p1 = vertexPositionsGLM[i1];
       glm::vec3 pm1 = vertexPositionsGLM[im1];
@@ -249,11 +260,15 @@ void processFileOBJ(std::string filename) {
       auto p = std::make_pair(iMin, iMax);
       if (seenEdges.find(p) == seenEdges.end()) {
         eLen.push_back(len);
+        eCat.push_back((iF + iC) % 5);
         edgeOrdering.push_back(edgeOrdering.size()); // totally coincidentally, this is the trivial ordering
         seenEdges.insert(p);
       }
       heLen.push_back(len);
       cAngle.push_back(angle);
+      heCat.push_back((iF + iC) % 7);
+      cCat.push_back(i0 % 12);
+      cID.push_back(iC);
     }
   }
   size_t nEdges = edgeOrdering.size();
@@ -261,6 +276,13 @@ void processFileOBJ(std::string filename) {
   polyscope::getSurfaceMesh(niceName)->addEdgeScalarQuantity("edge length", eLen);
   polyscope::getSurfaceMesh(niceName)->addHalfedgeScalarQuantity("halfedge length", heLen);
   polyscope::getSurfaceMesh(niceName)->addCornerScalarQuantity("corner angle", cAngle);
+  polyscope::getSurfaceMesh(niceName)->addCornerScalarQuantity("corner ID", cID);
+  polyscope::getSurfaceMesh(niceName)->addEdgeScalarQuantity("categorical edge", eCat,
+                                                             polyscope::DataType::CATEGORICAL);
+  polyscope::getSurfaceMesh(niceName)->addHalfedgeScalarQuantity("categorical halfedge", heCat,
+                                                                 polyscope::DataType::CATEGORICAL);
+  polyscope::getSurfaceMesh(niceName)->addCornerScalarQuantity("categorical corner", cCat,
+                                                               polyscope::DataType::CATEGORICAL);
 
 
   // Test error
@@ -734,13 +756,16 @@ void addDataToPointCloud(std::string pointCloudName, const std::vector<glm::vec3
   // Add some scalar quantities
   std::vector<double> xC(points.size());
   std::vector<std::array<double, 3>> randColor(points.size());
+  std::vector<double> cat(points.size());
   for (size_t i = 0; i < points.size(); i++) {
     xC[i] = points[i].x;
     randColor[i] = {{polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit()}};
+    cat[i] = i * 12 / points.size();
   }
   polyscope::getPointCloud(pointCloudName)->addScalarQuantity("xC", xC);
   polyscope::getPointCloud(pointCloudName)->addColorQuantity("random color", randColor);
   polyscope::getPointCloud(pointCloudName)->addColorQuantity("random color2", randColor);
+  polyscope::getPointCloud(pointCloudName)->addScalarQuantity("categorical", cat, polyscope::DataType::CATEGORICAL);
 
 
   // Add some vector quantities
@@ -807,7 +832,7 @@ void callback() {
   static int loadedMat = 1;
   static bool depthClick = false;
 
-  ImGui::PushItemWidth(100);
+  ImGui::PushItemWidth(100 * polyscope::options::uiScale);
 
   ImGui::InputInt("num points", &numPoints);
   ImGui::InputFloat("param value", &param);
@@ -834,26 +859,27 @@ void callback() {
       std::tie(xInd, yInd) = polyscope::view::screenCoordsToBufferInds(screenCoords);
 
       glm::vec3 worldRay = polyscope::view::screenCoordsToWorldRay(screenCoords);
-      glm::vec3 worldPos = polyscope::view::screenCoordsToWorldPosition(screenCoords);
-      std::pair<polyscope::Structure*, size_t> pickPair = polyscope::pick::pickAtScreenCoords(screenCoords);
+      polyscope::PickResult pickResult = polyscope::pickAtScreenCoords(screenCoords);
 
       std::cout << "Polyscope scene test click " << std::endl;
       std::cout << "    io.MousePos.x: " << io.MousePos.x << " io.MousePos.y: " << io.MousePos.y << std::endl;
       std::cout << "    screenCoords.x: " << screenCoords.x << " screenCoords.y: " << screenCoords.y << std::endl;
       std::cout << "    bufferInd.x: " << xInd << " bufferInd.y: " << yInd << std::endl;
+      std::cout << "    depth: " << pickResult.depth << std::endl;
       std::cout << "    worldRay: ";
       polyscope::operator<<(std::cout, worldRay) << std::endl;
       std::cout << "    worldPos: ";
-      polyscope::operator<<(std::cout, worldPos) << std::endl;
-      if (pickPair.first == nullptr) {
+      polyscope::operator<<(std::cout, pickResult.position) << std::endl;
+      if (pickResult.isHit) {
+        std::cout << "    structure: " << pickResult.structureType << " " << pickResult.structureName
+                  << " local ind: " << pickResult.localIndex << std::endl;
+      } else {
         std::cout << "    structure: "
                   << "none" << std::endl;
-      } else {
-        std::cout << "    structure: " << pickPair.first << " element id: " << pickPair.second << std::endl;
       }
 
       // Construct point at click location
-      polyscope::registerPointCloud("click point", std::vector<glm::vec3>({worldPos}));
+      polyscope::registerPointCloud("click point", std::vector<glm::vec3>({pickResult.position}));
 
       // Construct unit-length vector pointing in the direction of the click
       // (this depends only on the camera parameters, and does not require accessing the depth buffer)
@@ -865,6 +891,9 @@ void callback() {
     }
   }
 
+  if (ImGui::Button("nested show")) {
+    polyscope::show();
+  }
 
   if (ImGui::Button("drop camera view here")) {
     dropCameraView();
@@ -878,8 +907,27 @@ void callback() {
     addVolumeGrid();
   }
 
+  // ImPlot
+  // dummy data
+  if (ImGui::TreeNode("ImPlot")) {
+
+    std::vector<float> plotVals;
+    for (float t = 0; t < 10.; t += 0.01) {
+      plotVals.push_back(std::cosf(t + ImGui::GetTime()));
+    }
+
+    // sample plot
+    if (ImPlot::BeginPlot("test plot")) {
+      ImPlot::PlotLine("sample_val", &plotVals.front(), plotVals.size());
+      ImPlot::EndPlot();
+    }
+
+    ImGui::TreePop();
+  }
+
   ImGui::PopItemWidth();
 }
+
 
 int main(int argc, char** argv) {
   // Configure the argument parser
@@ -905,20 +953,20 @@ int main(int argc, char** argv) {
   // polyscope::options::autocenterStructures = true;
   // polyscope::view::windowWidth = 600;
   // polyscope::view::windowHeight = 800;
-  polyscope::options::maxFPS = 30;
-  polyscope::options::verbosity = 100;
+  // polyscope::options::maxFPS = -1;
+  polyscope::options::verbosity = 101;
   polyscope::options::enableRenderErrorChecks = true;
-  polyscope::options::alwaysRedraw = true;
+  polyscope::options::allowHeadlessBackends = true;
 
   // Initialize polyscope
   polyscope::init();
   polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
 
   for (std::string s : files) {
-   processFile(s);
+    processFile(s);
   }
-  
-  /*  
+
+  /*
 
   // Create a point cloud
   for (int j = 0; j < 1; j++) {
@@ -929,7 +977,7 @@ int main(int argc, char** argv) {
           glm::vec3{polyscope::randomUnit() - .5, polyscope::randomUnit() - .5, polyscope::randomUnit() - .5});
     }
     // auto point_cloud = polyscope::registerPointCloud("really great points" + std::to_string(j), points);
-    
+
     std::vector<glm::vec3> onePoint(1);
     onePoint[0] = glm::vec3(0, 0, 0);
 
@@ -942,10 +990,11 @@ int main(int argc, char** argv) {
     }
 
     // point_cloud->addColorQuantity("random colors", randColor);
-    
+
     // std::vector<glm::vec4> randTetracolors(points.size());
     // for (size_t i = 0; i < points.size(); i++) {
-    //   randTetracolors[i] = glm::vec4(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit());
+    //   randTetracolors[i] = glm::vec4(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(),
+  polyscope::randomUnit());
     // }
     std::vector<glm::vec4> RG1G2_randB(points.size());
     for (size_t i = 0; i < points.size(); i++) {
@@ -967,7 +1016,8 @@ int main(int argc, char** argv) {
     // Generate random Tetracolors
     // std::vector<polyscope::Tetracolor> randTetracolors(points.size());
     // for (size_t i = 0; i < points.size(); i++) {
-    //   randTetracolors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit(), polyscope::randomUnit());
+    //   randTetracolors[i] = polyscope::Tetracolor(polyscope::randomUnit(), polyscope::randomUnit(),
+  polyscope::randomUnit(), polyscope::randomUnit());
     // }
 
     // Debug Tetracolor white
@@ -978,19 +1028,23 @@ int main(int argc, char** argv) {
 
     // Visualize Tricolors
     point_cloud->setMaterial("flat");
-    // polyscope::getPointCloud("really great points" + std::to_string(j))->addColorQuantity("random color", randTricolors);
-    // polyscope::getPointCloud("really great points" + std::to_string(j))->addColorQuantity("random tetracolors", randTetracolors);
-    // polyscope::getPointCloud("really great points" + std::to_string(j))->addColorQuantity("random tetracolors", tetraWhite);
+    // polyscope::getPointCloud("really great points" + std::to_string(j))->addColorQuantity("random color",
+  randTricolors);
+    // polyscope::getPointCloud("really great points" + std::to_string(j))->addColorQuantity("random tetracolors",
+  randTetracolors);
+    // polyscope::getPointCloud("really great points" + std::to_string(j))->addColorQuantity("random tetracolors",
+  tetraWhite);
     // auto tetracolor_quantity = point_cloud->addTetracolorQuantity("random tetracolors", RG1G2_randB);
     auto tetracolor_quantity = point_cloud->addTetracolorQuantity("one tetracolor", oneColor);
     // auto color_quantity = point_cloud->addColorQuantity("one color", oneTricolor);
-    // auto tetracolor_quantity = polyscope::getPointCloud("really great points" + std::to_string(j))->addTetracolorQuantity("random tetracolors", randTetracolors);
+    // auto tetracolor_quantity = polyscope::getPointCloud("really great points" +
+  std::to_string(j))->addTetracolorQuantity("random tetracolors", randTetracolors);
     // tetracolor_quantity->createPointProgram();
 
     tetracolor_quantity->setEnabled(true);
     // color_quantity->setEnabled(true);
   }
-  
+
   */
 
   // polyscope::rasterizeTetra();
@@ -1002,24 +1056,22 @@ int main(int argc, char** argv) {
   // Add a few gui elements
   polyscope::state::userCallback = callback;
 
-  // Show the gui
-  // polyscope::show();
+  if (polyscope::isHeadless()) {
+    // save a screenshot to prove we initialized
+    std::cout << "Headless mode detected, saving screenshot" << std::endl;
+    polyscope::screenshot("headless_screenshot.png");
+  } else {
+    // Show the gui
+    polyscope::show();
 
-
-  // rotate_teapot();
-
-
-  // main loop using manual frameTick() instead
-  // while (true) {
-  //   rotateTeapot();
-  //   polyscope::frameTick();
-  // }
-
-  while (true) {
-    polyscope::fullFrameTick();
+    // main loop using manual frameTick() instead
+    // while (!polyscope::windowRequestsClose()) {
+    //   polyscope::frameTick();
+    // }
   }
 
   std::cout << "!!!! shutdown time" << std::endl;
+  polyscope::shutdown();
 
   return 0;
 }

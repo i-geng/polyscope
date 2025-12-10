@@ -8,8 +8,8 @@
 
 namespace polyscope {
 
-Structure::Structure(std::string name_, std::string subtypeName)
-    : name(name_), enabled(subtypeName + "#" + name + "#enabled", true),
+Structure::Structure(std::string name_, std::string subtypeName_)
+    : name(name_), subtypeName(subtypeName_), enabled(subtypeName + "#" + name + "#enabled", true),
       objectTransform(subtypeName + "#" + name + "#object_transform", glm::mat4(1.0)),
       transparency(subtypeName + "#" + name + "#transparency", 1.0),
       transformGizmo(subtypeName + "#" + name + "#transform_gizmo", objectTransform.get(), &objectTransform),
@@ -21,7 +21,7 @@ Structure::Structure(std::string name_, std::string subtypeName)
   validateName(name);
 }
 
-Structure::~Structure(){};
+Structure::~Structure() {};
 
 Structure* Structure::setEnabled(bool newEnabled) {
   if (newEnabled == isEnabled()) return this;
@@ -173,7 +173,7 @@ std::tuple<glm::vec3, glm::vec3> Structure::boundingBox() {
 float Structure::lengthScale() {
   // compute the scaling caused by the object transform
   const glm::mat4x4& T = objectTransform.get();
-  float transScale = std::abs(glm::determinant(glm::mat3x3(T))) / T[3][3];
+  float transScale = std::cbrt(std::abs(glm::determinant(glm::mat3x3(T)))) / T[3][3];
   return transScale * objectSpaceLengthScale;
 }
 
@@ -239,8 +239,10 @@ std::vector<std::string> Structure::addStructureRules(std::vector<std::string> i
 }
 
 void Structure::setStructureUniforms(render::ShaderProgram& p) {
-  glm::mat4 viewMat = getModelView();
-  p.setUniform("u_modelView", glm::value_ptr(viewMat));
+  if (p.hasUniform("u_modelView")) {
+    glm::mat4 viewMat = getModelView();
+    p.setUniform("u_modelView", glm::value_ptr(viewMat));
+  }
 
   if (p.hasUniform("u_modelMatrix")) {
     glm::mat4 modelMat = getModelMatrix();
@@ -316,6 +318,14 @@ Structure* Structure::setCullWholeElements(bool newVal) {
   return this;
 }
 bool Structure::getCullWholeElements() { return cullWholeElements.get(); }
+
+
+Structure* Structure::setTransformGizmoEnabled(bool newVal) {
+  transformGizmo.enabled = newVal;
+  requestRedraw();
+  return this;
+}
+bool Structure::getTransformGizmoEnabled() { return transformGizmo.enabled.get(); }
 
 Structure* Structure::setIgnoreSlicePlane(std::string name, bool newValue) {
 

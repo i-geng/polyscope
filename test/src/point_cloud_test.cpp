@@ -66,10 +66,10 @@ TEST_F(PolyscopeTest, PointCloudPick) {
   auto psPoints = registerPointCloud();
 
   // Don't bother trying to actually click on anything, but make sure this doesn't crash
-  polyscope::pick::evaluatePickQuery(77, 88);
+  polyscope::pickAtBufferInds(glm::ivec2(77, 88));
 
   psPoints->setPointRenderMode(polyscope::PointRenderMode::Quad);
-  polyscope::pick::evaluatePickQuery(77, 88);
+  polyscope::pickAtBufferInds(glm::ivec2(77, 88));
 
   polyscope::removeAllStructures();
 }
@@ -98,6 +98,31 @@ TEST_F(PolyscopeTest, PointCloudScalar) {
 
   std::vector<double> vScalar(psPoints->nPoints(), 7.);
   auto q1 = psPoints->addScalarQuantity("vScalar", vScalar);
+  q1->setEnabled(true);
+  polyscope::show(3);
+
+  psPoints->setPointRenderMode(polyscope::PointRenderMode::Quad);
+  polyscope::show(3);
+
+  q1->setIsolinesEnabled(true);
+  polyscope::show(3);
+
+  q1->setIsolineStyle(polyscope::IsolineStyle::Contour);
+  polyscope::show(3);
+
+  q1->updateData(vScalar);
+  polyscope::show(3);
+
+  polyscope::show(3);
+
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, PointCloudScalarCategorical) {
+  auto psPoints = registerPointCloud();
+
+  std::vector<double> vScalar(psPoints->nPoints(), 7.);
+  auto q1 = psPoints->addScalarQuantity("vScalar", vScalar, polyscope::DataType::CATEGORICAL);
   q1->setEnabled(true);
   polyscope::show(3);
 
@@ -177,6 +202,43 @@ TEST_F(PolyscopeTest, PointCloudScalarRadius) {
   polyscope::show(3);
 
   psPoints->clearPointRadiusQuantity();
+  polyscope::show(3);
+
+  polyscope::removeAllStructures();
+}
+
+TEST_F(PolyscopeTest, PointCloudScalarTransparency) {
+  auto psPoints = registerPointCloud();
+  std::vector<double> vScalar(psPoints->nPoints(), 7.);
+  std::vector<double> vScalar2(psPoints->nPoints(), 7.);
+  auto q1 = psPoints->addScalarQuantity("vScalar", vScalar);
+  auto q2 = psPoints->addScalarQuantity("vScalar2", vScalar2);
+  q1->setEnabled(true);
+
+  psPoints->setTransparencyQuantity(q1);
+  polyscope::show(3);
+
+  psPoints->setPointRenderMode(polyscope::PointRenderMode::Quad);
+  polyscope::show(3);
+
+  psPoints->setTransparencyQuantity("vScalar2");
+  polyscope::show(3);
+
+  // Change transparency settings
+  polyscope::options::transparencyMode = polyscope::TransparencyMode::Simple;
+  polyscope::show(3);
+
+  q2->updateData(vScalar2);
+  polyscope::show(3);
+
+  polyscope::options::transparencyMode = polyscope::TransparencyMode::None;
+  polyscope::show(3);
+  polyscope::options::transparencyMode = polyscope::TransparencyMode::Pretty;
+
+  psPoints->clearPointRadiusQuantity();
+  polyscope::show(3);
+
+  polyscope::options::transparencyMode = polyscope::TransparencyMode::None;
   polyscope::show(3);
 
   polyscope::removeAllStructures();

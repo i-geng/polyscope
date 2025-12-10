@@ -17,11 +17,15 @@ Quantity::Quantity(std::string name_, Structure& parentStructure_)
   validateName(name);
 }
 
-Quantity::~Quantity(){};
+Quantity::~Quantity() {};
 
 void Quantity::draw() {}
 
 void Quantity::drawDelayed() {}
+
+void Quantity::drawPick() {}
+
+void Quantity::drawPickDelayed() {}
 
 void Quantity::buildUI() {}
 
