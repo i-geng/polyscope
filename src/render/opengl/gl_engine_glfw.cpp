@@ -27,7 +27,7 @@ void initializeRenderEngine_glfw() {
   // initialize
   glEngineGLFW->initialize();
   engine->allocateGlobalBuffersAndPrograms();
-  glEngine->createLightManager();
+  glEngineGLFW->createLightManager();
 }
 
 GLEngineGLFW::GLEngineGLFW() {}
@@ -149,7 +149,7 @@ void GLEngineGLFW::initializeImGui() {
   bindDisplay();
 
   ImGui::CreateContext(); // must call once at start
-  ImPlot::CreateContext(); 
+  ImPlot::CreateContext();
 
   // Set up ImGUI glfw bindings
   ImGui_ImplGlfw_InitForOpenGL(mainWindow, true);

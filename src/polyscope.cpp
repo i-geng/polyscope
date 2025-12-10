@@ -53,6 +53,7 @@ auto prevMainLoopTime = std::chrono::steady_clock::now();
 float rollingMainLoopDurationMicrosec = 0.;
 float rollingMainLoopEMA = 0.05;
 float lastMainLoopDurationMicrosec = 0.;
+auto lastMainLoopIterTime = std::chrono::steady_clock::now();
 auto frameZeroTime = std::chrono::steady_clock::now();
 auto frameStartTime = std::chrono::steady_clock::now();
 int frameIndex = -1;
@@ -334,12 +335,14 @@ void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI) {
 void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefaultUI) {
 
   // Create a new context and push it on to the stack
-  ImGuiContext* newContext = ImGui::CreateContext(render::engine->getImGuiGlobalFontAtlas());
+  ImGuiContext* newContext = ImGui::CreateContext();
+  ImPlotContext* newPlotContext = ImPlot::CreateContext();
   ImGuiIO& oldIO = ImGui::GetIO(); // used to GLFW + OpenGL data to the new IO object
 #ifdef IMGUI_HAS_DOCK
   ImGuiPlatformIO& oldPlatformIO = ImGui::GetPlatformIO();
 #endif
   ImGui::SetCurrentContext(newContext);
+  ImPlot::SetCurrentContext(newPlotContext);
 #ifdef IMGUI_HAS_DOCK
   // Propagate GLFW window handle to new context
   ImGui::GetMainViewport()->PlatformHandle = oldPlatformIO.Viewports[0]->PlatformHandle;
@@ -347,11 +350,13 @@ void pushContextEvenOdd(std::function<void()> callbackFunction, bool drawDefault
   ImGui::GetIO().BackendPlatformUserData = oldIO.BackendPlatformUserData;
   ImGui::GetIO().BackendRendererUserData = oldIO.BackendRendererUserData;
 
+  render::engine->configureImGui();
+
   if (options::configureImGuiStyleCallback) {
     options::configureImGuiStyleCallback();
   }
 
-  contextStack.push_back(ContextEntry{newContext, callbackFunction, drawDefaultUI});
+  contextStack.push_back(ContextEntry{newContext, newPlotContext, callbackFunction, drawDefaultUI});
 
   if (contextStack.size() > 50) {
     // Catch bugs with nested show()
@@ -1122,8 +1127,9 @@ void buildEvenOddGui() {
   // Create window
   static bool showEvenOddWindow = true;
 
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
-  ImGui::SetNextWindowSize(ImVec2(leftWindowsWidth, 0.));
+  ImGui::SetNextWindowPos(
+      ImVec2(internal::imguiStackMargin, internal::lastWindowHeightPolyscope + internal::imguiStackMargin));
+  ImGui::SetNextWindowSize(ImVec2(internal::leftWindowsWidth, 0.));
 
   ImGui::Begin("Even-Odd", &showEvenOddWindow);
 
@@ -1144,40 +1150,8 @@ void buildEvenOddGui() {
   }
   ImGui::PopItemWidth();
 
-  lastWindowHeightPolyscope += imguiStackMargin + ImGui::GetWindowHeight();
-  leftWindowsWidth = ImGui::GetWindowWidth();
-
-  ImGui::End();
-}
-
-void buildEvenOddGui() {
-  // Create window
-  static bool showEvenOddWindow = true;
-
-  ImGui::SetNextWindowPos(ImVec2(imguiStackMargin, lastWindowHeightPolyscope + imguiStackMargin));
-  ImGui::SetNextWindowSize(ImVec2(leftWindowsWidth, 0.));
-
-  ImGui::Begin("Even-Odd", &showEvenOddWindow);
-
-  // Checkbox to black out even frames
-  ImGui::Checkbox("Black out even frames", &options::blackOutEvenFrames);
-
-  // Checkbox to black out odd frames
-  ImGui::Checkbox("Black out odd frames", &options::blackOutOddFrames);
-
-  // Checkbox to draw even frames first
-  ImGui::Checkbox("Draw even frame first", &options::drawEvenFrameFirst);
-
-  ImGui::PushItemWidth(40);
-  if (ImGui::InputFloat("target sleep", &options::targetSleep, 0)) {
-    if (options::targetSleep < 0.0) {
-      options::targetSleep = 0.0;
-    }
-  }
-  ImGui::PopItemWidth();
-
-  lastWindowHeightPolyscope += imguiStackMargin + ImGui::GetWindowHeight();
-  leftWindowsWidth = ImGui::GetWindowWidth();
+  internal::lastWindowHeightPolyscope += internal::imguiStackMargin + ImGui::GetWindowHeight();
+  internal::leftWindowsWidth = ImGui::GetWindowWidth();
 
   ImGui::End();
 }
