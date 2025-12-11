@@ -21,7 +21,7 @@ Structure::Structure(std::string name_, std::string subtypeName_)
   validateName(name);
 }
 
-Structure::~Structure() {};
+Structure::~Structure(){};
 
 Structure* Structure::setEnabled(bool newEnabled) {
   if (newEnabled == isEnabled()) return this;
@@ -225,7 +225,7 @@ bool Structure::hasExtents() { return true; }
 
 glm::mat4 Structure::getModelView() { return view::getCameraViewMatrix() * objectTransform.get(); }
 
-glm::mat4 Structure::getModelMatrix() {return objectTransform.get(); }
+glm::mat4 Structure::getModelMatrix() { return objectTransform.get(); }
 
 std::vector<std::string> Structure::addStructureRules(std::vector<std::string> initRules) {
   if (render::engine->slicePlanesEnabled()) {
@@ -263,6 +263,10 @@ void Structure::setStructureUniforms(render::ShaderProgram& p) {
       glm::vec4 viewport = render::engine->getCurrentViewport();
       glm::vec2 viewportDim{viewport[2], viewport[3]};
       p.setUniform("u_viewportDim", viewportDim);
+    }
+
+    if (p.hasUniform("u_transparencyPeelEpsilon")) {
+      p.setUniform("u_transparencyPeelEpsilon", options::transparencyPeelEpsilon);
     }
 
     // Attach the min depth texture, if needed

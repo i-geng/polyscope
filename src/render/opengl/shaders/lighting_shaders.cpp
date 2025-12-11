@@ -329,6 +329,7 @@ const ShaderReplacementRule TRANSPARENCY_PEEL_STRUCTURE (
           uniform float u_transparency;
           uniform sampler2D t_minDepth;
           uniform vec2 u_viewportDim;
+          uniform float u_transparencyPeelEpsilon;
         )"},
       {"GENERATE_ALPHA", R"(
           alphaOut *= u_transparency;
@@ -338,7 +339,7 @@ const ShaderReplacementRule TRANSPARENCY_PEEL_STRUCTURE (
           // (use float depth = gl_FragCoord.z; if not doing anything special)
           vec2 depthPixelCoords = gl_FragCoord.xy / u_viewportDim;
           float minDepth = texture(t_minDepth, depthPixelCoords).x;
-          if(depth <= minDepth+1e-6) {
+          if(depth <= minDepth+u_transparencyPeelEpsilon) {
             discard;
           }
         )"},
@@ -346,6 +347,7 @@ const ShaderReplacementRule TRANSPARENCY_PEEL_STRUCTURE (
     /* uniforms */ {
         {"u_transparency", RenderDataType::Float},
         {"u_viewportDim", RenderDataType::Vector2Float},
+        {"u_transparencyPeelEpsilon", RenderDataType::Float},
     },
     /* attributes */ {},
     /* textures */ {
@@ -358,18 +360,21 @@ const ShaderReplacementRule TRANSPARENCY_PEEL_GROUND (
     { /* replacement sources */
       {"FRAG_DECLARATIONS", R"(
           uniform sampler2D t_minDepth;
+          uniform float u_transparencyPeelEpsilon;
         )"},
       {"GLOBAL_FRAGMENT_FILTER", R"(
           // assumption: "float depth" must be already set 
           // (use float depth = gl_FragCoord.z; if not doing anything special)
           vec2 depthPixelCoords = gl_FragCoord.xy / u_viewportDim;
           float minDepth = texture(t_minDepth, depthPixelCoords).x;
-          if(depth <= minDepth+1e-6) {
+          if(depth <= minDepth+u_transparencyPeelEpsilon) {
             discard;
           }
         )"},
     },
-    /* uniforms */ {},
+    /* uniforms */ {
+        {"u_transparencyPeelEpsilon", RenderDataType::Float},
+    },
     /* attributes */ {},
     /* textures */ {
         {"t_minDepth", 2},

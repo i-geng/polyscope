@@ -63,6 +63,7 @@ int ssaaFactor = 1;
 // Transparency
 TransparencyMode transparencyMode = TransparencyMode::None;
 int transparencyRenderPasses = 8;
+float transparencyPeelEpsilon = 1e-4;
 
 // === Advanced ImGui configuration
 

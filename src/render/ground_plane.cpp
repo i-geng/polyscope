@@ -244,6 +244,10 @@ void GroundPlane::draw(bool isRedraw) {
       groundPlaneProgram->setUniform("u_shadowDarkness", options::shadowDarkness);
     }
 
+    if (groundPlaneProgram->hasUniform("u_transparencyPeelEpsilon")) {
+      groundPlaneProgram->setUniform("u_transparencyPeelEpsilon", options::transparencyPeelEpsilon);
+    }
+
     switch (view::projectionMode) {
     case ProjectionMode::Perspective: {
       float camHeight = view::getCameraWorldPosition()[iP];

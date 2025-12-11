@@ -112,6 +112,7 @@ extern float uiScale;
 // Transparency settings for the renderer
 extern TransparencyMode transparencyMode;
 extern int transparencyRenderPasses;
+extern float transparencyPeelEpsilon;
 
 // Some options for even-odd rendering
 extern bool renderEvenOddAbsoluteClock;

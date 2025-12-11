@@ -330,6 +330,13 @@ void Engine::buildEngineGui() {
         if (ImGui::InputInt("Render Passes", &options::transparencyRenderPasses)) {
           requestRedraw();
         }
+        if (ImGui::InputFloat("Depth Epsilon", &options::transparencyPeelEpsilon, 0.0f, 0.0f, "%.1e")) {
+          requestRedraw();
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip(
+              "Depth threshold for peeling layers. Increase to reduce z-fighting on intersecting surfaces.");
+        }
         break;
       }
       }
